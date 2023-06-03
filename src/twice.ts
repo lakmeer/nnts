@@ -1,10 +1,13 @@
 
-
 //
 // Episode 1: Machine Learning in C
 //
 // aka "Training our last braincell"
 //
+// Single-input, single-neuron model that models f(x) -> 2x
+//
+
+log.ok("Loaded model: Twice");
 
 const train:Array<TrainingPair> = [
   [ 0, 0 ],
@@ -14,19 +17,17 @@ const train:Array<TrainingPair> = [
   [ 4, 8 ],
 ]
 
-const train_count = train.length;
-
 const cost = (w:float, b:float):float => {
   let result = 0;
 
-  for (let i = 0; i < train_count; i++) {
+  for (let i = 0; i < train.length; i++) {
     const x:float = train[i][0];
     const y:float = x * w + b;
     const d = y - train[i][1];
     result += d*d;
   }
 
-  return result / train_count;
+  return result / train.length;
 }
 
 

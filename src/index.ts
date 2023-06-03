@@ -24,7 +24,7 @@ type int   = number;
 
 // Run specific example
 
-import { main } from  './twice';
+import { main } from  './gates';
 
 main();
 
