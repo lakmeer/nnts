@@ -31,6 +31,13 @@ const set_nand = [
   [ 1, 1, 0 ],
 ]
 
+const set_xor = [
+  [ 0, 0, 1 ],
+  [ 0, 1, 0 ],
+  [ 1, 0, 0 ],
+  [ 1, 1, 1 ],
+]
+
 
 //
 // Functions
@@ -50,7 +57,9 @@ const cost_of = (set) => (w1:float, w2:float, b:float):float => {
   return result / set.length;
 }
 
-const forward = (x1:float, x2:float, w1:float, w2:float, b:float):float => {
+const forward = (...params:Array<float>):float => {
+  const [ x1, x2, w1, w2, b ] = params;
+
   return sigmoid(x1 * w1 + x2 * w2 + b);
 }
 
@@ -58,19 +67,25 @@ const sigmoid = (x:float):float => {
   return 1 / (1 + Math.exp(-x));
 }
 
-const confirm = (title, set, w1, w2, b) => {
+const confirm = (title, set, w1, w2, b):boolean => {
   const cost = cost_of(set);
 
-  log.ok(`${title}: ${cost(w1, w2, b)}`);
-  log.ok(" x1 |  x2 | exp | act");
-  log.ok("----+-----+-----+----");
+  let pass = true;
+
+  log.info(`${title}: ${cost(w1, w2, b)}`);
+  log.info(" x1 |  x2 | exp | act");
+  log.info("----+-----+-----+----");
 
   for (let ix in set) {
     const [ x1, x2, exp ] = set[ix];
     const act = forward(x1, x2, w1, w2, b);
-    const print = exp == act.toFixed(0) ? log.ok : log.err;
+    const ok = exp == act.toFixed(0);
+    const print = ok ? log.ok : log.err;
+    pass = pass && ok;
     print(` ${x1}  |  ${x2}  |  ${exp}  |  ${act.toFixed(0)}  (${act})`);
   }
+
+  return pass;
 }
 
 const train = (label:string, set:TrainingSet, eps:number, rate:number, rounds:number) => {
@@ -80,7 +95,7 @@ const train = (label:string, set:TrainingSet, eps:number, rate:number, rounds:nu
 
   let cost = cost_of(set);
 
-  console.time(`Training ${label}`);
+  const start = performance.now();
 
   for (let i = 0; i < rounds; i++) {
     let c = cost(w1, w2, b);
@@ -91,12 +106,22 @@ const train = (label:string, set:TrainingSet, eps:number, rate:number, rounds:nu
     w2 -= rate * dw2;
     b  -= rate * db;
   }
-  console.timeEnd(`Training ${label}`);
 
+  const time = performance.now() - start;
+
+  console.log('');
+
+  log.info(`Trained ${label} in ${time}`);
   log.info(`cost: ${cost(w1, w2, b).toFixed(6)}, params: ${w1.toFixed(6)}, ${w2.toFixed(6)}, bias: ${b.toFixed(6)}`);
   log.info("------------");
 
-  confirm(label, set, w1, w2, b);
+  const passed = confirm(label, set, w1, w2, b);
+
+  if (!passed) {
+    log.red("Failed");
+  } else {
+    log.green("Passed");
+  }
 }
 
 
@@ -110,6 +135,7 @@ export const main = () => {
   train("OR",   set_or,   eps, rate, 10000);
   train("AND",  set_and,  eps, rate, 10000);
   train("NAND", set_nand, eps, rate, 10000);
+  train("XOR",  set_xor,  eps, rate, 10000);
 
 }
 

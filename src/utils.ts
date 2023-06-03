@@ -4,12 +4,18 @@
 
 import C, { colorNames } from "chalk";
 
-export const logHelper = (name: string, color: string) => ({
-  ok:    (...args) => console.log(C.green(`[${name}]`), ...args),
-  info:  (...args) => console.log(C.blue(`[${name}]`), ...args),
-  err:   (...args) => console.log(C.red(`[${name}]`), ...args),
-  quiet: (...args) => console.log(C.grey(`[${name}]`), ...args),
-})
+export const logHelper = (name: string, color: string) => {
+  const label = `[${name}]`;
+  return {
+    ok:    (...args) => console.log(C.green(label), ...args),
+    info:  (...args) => console.log(C.blue(label), ...args),
+    err:   (...args) => console.log(C.red(label), ...args),
+    quiet: (...args) => console.log(C.grey(label, ...args)),
+    red:   (...args) => console.log(C.red(label, ...args)),
+    green: (...args) => console.log(C.green(label, ...args)),
+    blue:  (...args) => console.log(C.blue(label, ...args)),
+  }
+}
 
 
 // Math
