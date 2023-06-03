@@ -7,8 +7,10 @@ log.quiet("Loaded model: Gates");
 
 
 //
-// Training Data Set
+// Training Data Sets
 //
+
+type TrainingSet = Array<[float, float, float]>;
 
 const set_or = [
   [ 0, 0, 0 ],
@@ -42,43 +44,61 @@ const set_xor = [
 //
 // Model Types
 //
-// Xor is assuming 3-gate model:
-//
-//  x1---OR( w1,  w2, b) 
-//    \ /               \
-//     X                 AND(w1, w2, b) -> y
-//    / \               /
-//  x2---NAND(w1, w2, b)
 //
 //
 // Each junction is modelled explicitly with it's own params
 
-type Gate = {
-  w1:float,
-  w2:float,
-  b:float,
-}
-
-type Xor = {
-  or_w1:float,
-  or_w2:float,
-  or_b:float,
-
-  and_w1:float,
-  and_w2:float,
-  and_b:float,
-
-  nand_w1:float,
-  nand_w2:float,
-  nand_b:float,
+type ModelTemplate = {
+  size: number,
+  forward: (...inputs:Array<float>) => float,
 }
 
 type Model = {
-  type: string;
-  data: Array<TrainingTuple>;
-  params: Gate | Xor,
-  forward: (x1:float, x2:float) => float,
-  cost: (...args:Array<float>) => float,
+  name: string;
+  params: Array<float>;
+  forward: (...inputs:Array<float>) => float;
+}
+
+const MODEL = {
+
+  // 2-input, 1-output logic gates
+
+  GATE: {
+    size: 3,
+    forward: (x1, x2, ...params) => {
+      const [ w1, w2, b ] = params;
+      return sigmoid(x1 * w1 + x2 * w2 + b);
+    }
+  },
+
+  // Xor is assuming 3-gate model:
+  //
+  //  x1---OR( w1,  w2, b)
+  //    \ /               \
+  //     X                 AND(w1, w2, b) -> y
+  //    / \               /
+  //  x2---NAND(w1, w2, b)
+
+  XOR: {
+    size: 9,
+    forward: (x1, x2, ...params) => {
+      const fwd = MODEL.GATE.forward;
+      const [ or_w1, or_w2, or_b, and_w1, and_w2, and_b, nand_w1, nand_w2, nand_b ] = params;
+      return fwd(
+        fwd(x1, x2, or_w1, or_w2, or_b),
+        fwd(x1, x2, nand_w1, nand_w2, nand_b),
+        and_w1, and_w2, and_b
+      );
+    }
+  }
+}
+
+const init_model = (name:string, template:ModelTemplate) => {
+  return {
+    name,
+    forward: template.forward,
+    params: Array(template.size).fill(0).map(() => rand())
+  }
 }
 
 
@@ -98,17 +118,6 @@ const cost_of = (set, forward) => (...params):float => {
   }
 
   return result / set.length;
-}
-
-const forward_gate = (x1:float, x2:float, w1:float, w2:float, b:float):float => {
-  return sigmoid(x1 * w1 + x2 * w2 + b);
-}
-
-const forward_xor = (x1:float, x2:float, ...params:Array<float>) => {
-  const [ or_w1, or_w2, or_b, and_w1, and_w2, and_b, nand_w1, nand_w2, nand_b ] = params;
-  const or   = forward_gate(x1, x2, or_w1, or_w2, or_b);
-  const nand = forward_gate(x1, x2, nand_w1, nand_w2, nand_b);
-  return forward_gate(or, nand, and_w1, and_w2, and_b);
 }
 
 const sigmoid = (x:float):float => {
@@ -136,69 +145,30 @@ const confirm = (title, set, forward, params):boolean => {
   return pass;
 }
 
-const train = (label:string, set:TrainingSet, forward:Function, eps:number, rate:number, rounds:number) => {
-  let w1 = rand();
-  let w2 = rand();
-  let b  = rand();
+const train = (model:Model, set:TrainingSet, eps:number, rate:number, steps:number) => {
 
-  let cost = cost_of(set, forward);
+  // Model init
+  let cost = cost_of(set, model.forward);
 
+  // Training loop
   const start = performance.now();
-
-  for (let i = 0; i < rounds; i++) {
-    let c = cost(w1, w2, b);
-    let dw1 = (cost(w1 + eps, w2, b) - c) / (eps);
-    let dw2 = (cost(w1, w2 + eps, b) - c) / (eps);
-    let db  = (cost(w1, w2, b + eps) - c) / (eps);
-    w1 -= rate * dw1;
-    w2 -= rate * dw2;
-    b  -= rate * db;
-  }
-
-  const time = performance.now() - start;
-
-  console.log('');
-
-  log.info(`Trained ${label} in ${time.toFixed(2)}ms`);
-  log.info(`cost: ${cost(w1, w2, b).toFixed(6)}, params: ${w1.toFixed(6)}, ${w2.toFixed(6)}, bias: ${b.toFixed(6)}`);
-  log.info("------------");
-
-  const passed = confirm(label, set, forward, [ w1, w2, b ]);
-
-  if (!passed) {
-    log.red("Failed");
-  } else {
-    log.green("Passed");
-  }
-}
-
-
-const train_xor = (label:string, set:TrainingSet, forward:Function, eps:number, rate:number, rounds:number) => {
-
-  let params = [ rand(), rand(), rand(), rand(), rand(), rand(), rand(), rand(), rand() ];
-
-  let cost = cost_of(set, forward);
-
-  const start = performance.now();
-
-  for (let i = 0; i < rounds; i++) {
-    let c = cost(...params);
-
-    for (let p = 0; p < params.length; p++) {
-      let dp = (cost(...params.map((v, ix) => ix == p ? v + eps : v)) - c) / (eps);
-      params[p] -= rate * dp;
+  for (let i = 0; i < steps; i++) {
+    let c = cost(...model.params);
+    for (let p = 0; p < model.params.length; p++) {
+      let dp = (cost(...model.params.map((v, ix) => ix == p ? v + eps : v)) - c) / (eps);
+      model.params[p] -= rate * dp;
     }
   }
-
   const time = performance.now() - start;
 
+  // Report
   console.log('');
-
-  log.info(`Trained ${label} in ${time.toFixed(2)}ms`);
-  log.info(`cost: ${cost(...params).toFixed(6)}, params: ${params.map(v => v.toFixed(6)).join(', ')}`);
+  log.blue(`Trained ${model.name} (${model.params.length} params) for ${steps} steps in ${time.toFixed(2)}ms`);
+  log.info(`Final cost:`, cost(...model.params));
+  log.info(`Params: ${model.params.map(v => v.toFixed(3)).join(', ')}`);
   log.info("------------");
 
-  const passed = confirm(label, set, forward, params);
+  const passed = confirm(model.name, set, model.forward, model.params);
 
   if (!passed) {
     log.red("Failed");
@@ -211,15 +181,17 @@ const train_xor = (label:string, set:TrainingSet, forward:Function, eps:number, 
 // Main
 
 export const main = () => {
-
   const eps  = 1e-2;
   const rate = 1e-1;
 
-  train("OR",      set_or,   forward_gate, eps, rate, 5000);
-  train("AND",     set_and,  forward_gate, eps, rate, 5000);
-  train("NAND",    set_nand, forward_gate, eps, rate, 5000);
-  train_xor("XOR", set_xor,  forward_xor,  eps, rate, 20000);
+  const or   = init_model("OR",   MODEL.GATE);
+  const and  = init_model("AND",  MODEL.GATE);
+  const nand = init_model("NAND", MODEL.GATE);
+  const xor  = init_model("XOR",  MODEL.XOR);
 
+  train(or,   set_or,   eps, rate, 50000);
+  train(and,  set_and,  eps, rate, 50000);
+  train(nand, set_nand, eps, rate, 50000);
+  train(xor,  set_xor,  eps, rate, 50000);
 }
-
 
