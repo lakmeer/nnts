@@ -1,4 +1,7 @@
 
+
+// Strings, Formatting
+
 import C from "chalk";
 
 export const logHelper = (name: string, color: string) => ({
@@ -7,4 +10,15 @@ export const logHelper = (name: string, color: string) => ({
   err:   (...args) => console.log(C.red(`[${name}]`), ...args),
   quiet: (...args) => console.log(C.dim(`[${name}]`), ...args.map(a => C.black(a+""))),
 })
+
+
+// Math
+
+export const rand = ():float => Math.random();
+
+
+// Globalify
+
+window.log = logHelper("NN");
+window.rand = rand;
 
