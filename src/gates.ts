@@ -5,6 +5,8 @@
 
 log.quiet("Loaded model: Gates");
 
+const TRAINING_REPORT = true;
+
 
 //
 // Training Data Sets
@@ -30,6 +32,13 @@ const set_nand = [
   [ 0, 0, 1 ],
   [ 0, 1, 1 ],
   [ 1, 0, 1 ],
+  [ 1, 1, 0 ],
+]
+
+const set_nor = [
+  [ 0, 0, 1 ],
+  [ 0, 1, 0 ],
+  [ 1, 0, 0 ],
   [ 1, 1, 0 ],
 ]
 
@@ -93,12 +102,18 @@ const MODEL = {
   }
 }
 
-const init_model = (name:string, template:ModelTemplate) => {
+const new_model = (name:string, template:ModelTemplate) => {
   return {
     name,
     forward: template.forward,
-    params: Array(template.size).fill(0).map(() => rand())
+    params: Array(template.size).fill(0)
   }
+}
+
+const init_model = (name:string, template:ModelTemplate) => {
+  const m = new_model(name, template);
+  m.params = m.params.map(() => rand());
+  return m;
 }
 
 
@@ -106,13 +121,13 @@ const init_model = (name:string, template:ModelTemplate) => {
 // Functions
 //
 
-const cost_of = (set, forward) => (...params):float => {
+const cost_of = (model:Model, set:TrainingSet) => (...params):float => {
   let result = 0;
 
   for (let i = 0; i < set.length; i++) {
     const x1:float = set[i][0];
     const x2:float = set[i][1];
-    const y:float = forward(x1, x2, ...params);
+    const y:float = model.forward(x1, x2, ...params);
     const d = y - set[i][2];
     result += d*d;
   }
@@ -124,18 +139,18 @@ const sigmoid = (x:float):float => {
   return 1 / (1 + Math.exp(-x));
 }
 
-const confirm = (title, set, forward, params):boolean => {
-  const cost = cost_of(set, forward);
+const confirm = (model:Model, set:TrainingSet):boolean => {
+  const cost = cost_of(model, set);
 
   let pass = true;
 
-  log.info(`${title}: ${cost(...params)}`);
+  log.info("----+-----+-----+-----");
   log.info(" x1 |  x2 | exp | act");
-  log.info("----+-----+-----+----");
+  log.info("----+-----+-----+-----");
 
   for (let ix in set) {
     const [ x1, x2, exp ] = set[ix];
-    const act = forward(x1, x2, ...params);
+    const act = model.forward(x1, x2, ...model.params);
     const ok = exp == act.toFixed(0);
     const print = ok ? log.ok : log.err;
     pass = pass && ok;
@@ -145,36 +160,59 @@ const confirm = (title, set, forward, params):boolean => {
   return pass;
 }
 
+const finite_diff = (params:Array<float>, eps:float, cost):Array<float> => {
+  const size = params.length;
+  const g = Array(size);
+  let c = cost(...params);
+  let saved;
+
+  for (let p = 0; p < size; p++) {
+    saved = params[p];
+    params[p] += eps;
+    g[p] = (cost(...params) - c) / eps;
+    params[p] = saved;
+  }
+
+  return g;
+}
+
+
 const train = (model:Model, set:TrainingSet, eps:number, rate:number, steps:number) => {
 
   // Model init
-  let cost = cost_of(set, model.forward);
+  let cost = cost_of(model, set);
 
   // Training loop
   const start = performance.now();
+
   for (let i = 0; i < steps; i++) {
-    let c = cost(...model.params);
+    const grad = finite_diff(model.params, eps, cost);
+
     for (let p = 0; p < model.params.length; p++) {
-      let dp = (cost(...model.params.map((v, ix) => ix == p ? v + eps : v)) - c) / (eps);
-      model.params[p] -= rate * dp;
+      model.params[p] -= rate * grad[p];
     }
   }
+
   const time = performance.now() - start;
 
   // Report
+  if (!TRAINING_REPORT) return;
+
   console.log('');
+  const c = cost(...model.params);
   log.blue(`Trained ${model.name} (${model.params.length} params) for ${steps} steps in ${time.toFixed(2)}ms`);
-  log.info(`Final cost:`, cost(...model.params));
+  log.info(`Final Cost:`, c);
+  log.info(`Cost Rank:`, costMagnitude(c));
   log.info(`Params: ${model.params.map(v => v.toFixed(3)).join(', ')}`);
-  log.info("------------");
 
-  const passed = confirm(model.name, set, model.forward, model.params);
+  const passed = confirm(model, set);
 
-  if (!passed) {
-    log.red("Failed");
-  } else {
-    log.green("Passed");
-  }
+  console.log('');
+}
+
+const costMagnitude = (n:float) => {
+  const rank = -Math.floor(Math.log10(n));
+  return Array(rank).fill('⭐').join('');
 }
 
 
@@ -187,11 +225,14 @@ export const main = () => {
   const or   = init_model("OR",   MODEL.GATE);
   const and  = init_model("AND",  MODEL.GATE);
   const nand = init_model("NAND", MODEL.GATE);
+  const nor  = init_model("NOR",  MODEL.GATE);
   const xor  = init_model("XOR",  MODEL.XOR);
 
   train(or,   set_or,   eps, rate, 50000);
   train(and,  set_and,  eps, rate, 50000);
   train(nand, set_nand, eps, rate, 50000);
+  train(nor,  set_nor,  eps, rate, 50000);
   train(xor,  set_xor,  eps, rate, 50000);
+
 }
 
