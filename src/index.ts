@@ -12,19 +12,13 @@
 
 // Custom imports
 
-import './canvas'; // TODO: exports
+//import './canvas'; // TODO: exports
 import "./utils.ts";
-
-
-// C-ish shims
-
-type float = number;
-type int   = number;
 
 
 // Run specific example
 
-import { main } from  './gates';
+import { main } from  './gates.ts';
 
 main();
 
