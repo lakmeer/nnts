@@ -32,6 +32,11 @@ export const log = logHelper("NN");
 export const { red, green } = C;
 
 
+// Arrays
+
+export const last = <T>(arr:Array<T>):T => arr[arr.length - 1];
+
+
 // Math
 
 export const { min, max, sin, cos, exp, log10, pow, sqrt, abs, floor, PI } = Math;

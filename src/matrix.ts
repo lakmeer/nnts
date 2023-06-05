@@ -32,7 +32,7 @@ export const alloc = (rows: int, cols: int, rand = false): Matrix => {
 }
 
 // Alloc: New matrix of given size on top of existing buffer (optionally pre-fill with random values)
-export const allocIn = (rows: int, cols: int, buffer: ArrayBuffer, offset: int): int => {
+export const allocIn = (buffer: ArrayBuffer, offset: int, rows: int, cols: int): int => {
   const mem = new Float32Array(buffer, offset, rows * cols);
   return { rows, cols, data: mem };
 }
