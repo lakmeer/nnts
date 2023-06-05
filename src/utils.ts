@@ -62,4 +62,9 @@ export const assert = (cond:boolean, msg:string) => {
   if (!cond) throw new Error(msg);
 }
 
+export const costRank = (n:float) => {
+  const rank = -floor(log10(n));
+  return [ "🔴", "🟠", "🟡", "🟢", "🔵" ][limit(0, 4, rank - 1)];
+}
+
 

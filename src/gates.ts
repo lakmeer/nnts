@@ -229,16 +229,16 @@ export const main = () => {
   const eps  = 1e-2;
   const rate = 1e-1;
 
-  const or   = init_model("OR",   MODEL_GATE);
-  const and  = init_model("AND",  MODEL_GATE);
-  const nand = init_model("NAND", MODEL_GATE);
-  const nor  = init_model("NOR",  MODEL_GATE);
+  //const or   = init_model("OR",   MODEL_GATE);
+  //const and  = init_model("AND",  MODEL_GATE);
+  //const nand = init_model("NAND", MODEL_GATE);
+  //const nor  = init_model("NOR",  MODEL_GATE);
   const xor  = init_model("XOR",  MODEL_XOR);
 
-  train(or,   set_or,   eps, rate, 50000);
-  train(and,  set_and,  eps, rate, 50000);
-  train(nand, set_nand, eps, rate, 50000);
-  train(nor,  set_nor,  eps, rate, 50000);
+  //train(or,   set_or,   eps, rate, 50000);
+  //train(and,  set_and,  eps, rate, 50000);
+  //train(nand, set_nand, eps, rate, 50000);
+  //train(nor,  set_nor,  eps, rate, 50000);
   train(xor,  set_xor,  eps, rate, 50000);
 
 }

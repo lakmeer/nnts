@@ -13,7 +13,6 @@
 // Custom imports
 
 //import './canvas'; // TODO: exports
-import "./utils.ts";
 
 
 // Run specific example
@@ -21,4 +20,3 @@ import "./utils.ts";
 import { main } from  "./nn.ts";
 
 main();
-
