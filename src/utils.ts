@@ -1,4 +1,10 @@
 
+// Shim C types
+
+declare global {
+  type float = number;
+  type int   = number;
+}
 
 // Strings, Formatting
 
@@ -8,7 +14,10 @@
 // Deno
 import * as C from "https://deno.land/std@0.187.0/fmt/colors.ts";
 
-export const logHelper = (name: string, color: string) => {
+type LogFn = (...args: any[]) => void;
+type LogHlp = { [key: string]: LogFn }
+
+export const logHelper = (name: string):LogHlp => {
   const label = `[${name}]`;
   return {
     ok:    (...args) => console.log(C.green(label), ...args),
@@ -25,10 +34,4 @@ export const logHelper = (name: string, color: string) => {
 // Math
 
 export const rand = ():float => Math.random();
-
-
-// Globalify
-
-window.log = logHelper("NN");
-window.rand = rand;
 

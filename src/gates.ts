@@ -1,4 +1,8 @@
 
+import { logHelper, rand } from "./utils.ts";
+
+
+
 //
 // Modelling logic gates
 //
@@ -14,35 +18,35 @@ const TRAINING_REPORT = true;
 
 type TrainingSet = Array<[float, float, float]>;
 
-const set_or = [
+const set_or:TrainingSet = [
   [ 0, 0, 0 ],
   [ 0, 1, 1 ],
   [ 1, 0, 1 ],
   [ 1, 1, 1 ],
 ]
 
-const set_and = [
+const set_and:TrainingSet = [
   [ 0, 0, 0 ],
   [ 0, 1, 0 ],
   [ 1, 0, 0 ],
   [ 1, 1, 1 ],
 ]
 
-const set_nand = [
+const set_nand:TrainingSet = [
   [ 0, 0, 1 ],
   [ 0, 1, 1 ],
   [ 1, 0, 1 ],
   [ 1, 1, 0 ],
 ]
 
-const set_nor = [
+const set_nor:TrainingSet = [
   [ 0, 0, 1 ],
   [ 0, 1, 0 ],
   [ 1, 0, 0 ],
   [ 1, 1, 0 ],
 ]
 
-const set_xor = [
+const set_xor:TrainingSet = [
   [ 0, 0, 1 ],
   [ 0, 1, 0 ],
   [ 1, 0, 0 ],
