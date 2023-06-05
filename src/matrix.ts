@@ -31,6 +31,12 @@ export const alloc = (rows: int, cols: int, rand = false): Matrix => {
   return { rows, cols, data: mem };
 }
 
+// Create: New matrix of given size, with particular values
+export const create = (rows: int, cols: int, values: Array<float>): Matrix => {
+  assert(rows * cols === values.length, "create: incompatible dimensions");
+  const mem = new Float32Array(values);
+  return { rows, cols, data: mem };
+}
 
 // Fill: fill a matrix with a given value
 export const fill = (m: Matrix, val: float) => {
@@ -48,7 +54,7 @@ export const at = (m: Matrix, row: int, col: int): float =>
 export const get = at;
 
 // Put: put a value at a given row and column
-export const put = (m: Matrix, row: int, col: int, val: float) => 
+export const put = (m: Matrix, row: int, col: int, val: float) =>
   m.data[row * m.cols + col] = val;
 
 // Set: put all values at a given row and column
@@ -62,12 +68,31 @@ export const copy = (dst: Matrix, src: Matrix) => {
   dst.data.set(src.data, 0);
 }
 
-// Row From: new Matrix of size (1, a.cols) with values from row n of a
-export const rowFrom = (a: Matrix, n: int): Matrix => {
-  assert(n < a.rows, "rowFrom: row index out of bounds");
+// Row From: new Matrix of size (1, X) with values from row n of a of [>=n, X]
+export const row = (a: Matrix, n: int): Matrix => {
+  assert(n < a.rows, "row: row index out of bounds");
   const m = alloc(1, a.cols);
   m.data.set(a.data.subarray(n * a.cols, (n + 1) * a.cols));
   return m;
+}
+
+// Submatrix: new Matrix from rectangular selection inside target matrix
+export const sub = (m: Matrix, row: int, col: int, rows: int, cols: int): Matrix => {
+  const dst = alloc(rows, cols);
+  for (let i = 0; i < rows; i++) {
+    const rowSel = m.data.subarray((row + i) * m.cols + col, (row + i) * m.cols + col + cols);
+    dst.data.set(rowSel, i * cols);
+  }
+  return dst;
+}
+
+// Map-Copy: copy values from one matrix into another, but modify them along the way
+export const mapCopy = (dst: Matrix, src: Matrix, fn: (a: float, b: float, ix: int) => float) => {
+  assert(dst.rows === src.rows && dst.cols === src.cols, "mapCopy: incompatible dimensions");
+
+  for (let i = 0; i < dst.data.length; i++) {
+    dst.data[i] = fn(dst.data[i], src.data[i], i);
+  }
 }
 
 
@@ -114,7 +139,7 @@ export const print = (m: Matrix, label?:string) => {
   if (label) t.setTitle(label);
   for (let i = 0; i < m.rows; i++) {
     let row = m.data.subarray(i * m.cols, (i + 1) * m.cols);
-    t.addRow(row as unknown as Array<float>); 
+    t.addRow(...Array.from(row).map(i => i.toFixed(9)));
   }
   console.log(t.toString());
 }

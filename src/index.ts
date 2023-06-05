@@ -20,7 +20,5 @@ import "./utils.ts";
 
 import { main } from  "./nn.ts";
 
-//import { main } from  './gates.ts';
-
 main();
 

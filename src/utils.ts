@@ -47,7 +47,7 @@ export const limit = (a:number, b:number, n:number) => min(b, max(a, n));
 import { AsciiTable3 } from 'npm:ascii-table3'; // Deno
 export { AsciiTable3 };
 
-export const table = (headers:Array<string>, rows:Array<Array<string>>):string => {
+export const table = (headers:Array<string>, rows:Array<Array<any>>):string => {
   const t = new AsciiTable3().setStyle('unicode-round');
   for (let i = 0; i < headers.length; i++) t.setAlignCenter(i + 1); 
   t.setHeading(...headers);
