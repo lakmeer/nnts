@@ -1,21 +1,4 @@
 
-import {
-  logHelper,
-  costRank,
-  table,
-  floor,
-  log10,
-  limit,
-  exp, 
-  assert,
-  red,
-  green
-} from "./utils.ts";
-
-const log = logHelper("NN");
-
-log.quiet("Loaded NN");
-
 
 //
 // NN.ts
@@ -23,8 +6,24 @@ log.quiet("Loaded NN");
 // 🔪 Cutting edge machine-learning framework
 //
 
+import {
+  logHelper, costRank, table,
+  limit, assert, red, green,
+  floor, log10, max, exp, 
+} from "./utils.ts";
+
 import * as Mat from "./matrix.ts";
 import type { Matrix } from "./matrix.ts";
+
+
+//
+// Setup
+//
+
+const log = logHelper("NN");
+log.quiet("Loaded NN");
+
+const SHOW_COST_IN_PROGRESS = true;
 
 
 //
@@ -32,10 +31,13 @@ import type { Matrix } from "./matrix.ts";
 //
 
 const sigmoid = (x:float):float => 1 / (1 + exp(-x));
+const relu    = (x:float):float => max(0, x)
+const tanh    = (x:float):float => Math.tanh(x);
 
 
-
-// More abstract NN Models
+//
+// Network Structure
+//
 
 type Arch = Array<int>;
 
@@ -47,7 +49,9 @@ type NN = {
   as: Matrix[];
 }
 
-const nn_alloc = (arch:Arch, seed = false) => {
+
+
+const alloc = (arch:Arch, seed = false) => {
   const net:NN = {
     count: arch.length - 1,
     arch: arch,
@@ -67,7 +71,7 @@ const nn_alloc = (arch:Arch, seed = false) => {
   return net;
 }
 
-const nn_print = (net:NN, label:string) => {
+const print = (net:NN, label:string) => {
   log.info(`${label} (${net.count} layers)`);
   for (let i = 0; i < net.count; i++) {
     Mat.print(net.ws[i], `w${i}`);
@@ -75,7 +79,7 @@ const nn_print = (net:NN, label:string) => {
   }
 }
 
-const nn_forward = (net:NN) => {
+const forward = (net:NN) => {
   for (let i = 0; i < net.count; i++) {
     Mat.dot(net.as[i+1], net.as[i], net.ws[i]);
     Mat.sum(net.as[i+1], net.bs[i]);
@@ -83,14 +87,14 @@ const nn_forward = (net:NN) => {
   }
 }
 
-const nn_cost = (net:NN, ti:Matrix, to:Matrix) => {
+const cost = (net:NN, ti:Matrix, to:Matrix) => {
   const n = ti.rows;
   let c = 0;
 
   for (let i = 0; i < n; i++) {
 
     Mat.copy(net.as[0], Mat.row(ti, i));
-    nn_forward(net);
+    forward(net);
 
     for (let j = 0; j < to.cols; j++) {
       const exp = Mat.at(to, i, j);
@@ -102,9 +106,9 @@ const nn_cost = (net:NN, ti:Matrix, to:Matrix) => {
   return c / n;
 }
 
-const nn_finite_diff = (net:NN, grad:NN, eps:float, ti:Matrix, to:Matrix) => {
+const finite_diff = (net:NN, grad:NN, eps:float, ti:Matrix, to:Matrix) => {
   let saved:float;
-  const c = nn_cost(net, ti, to);
+  const c = cost(net, ti, to);
 
   for (let i = 0; i < net.count; i++) {
     let m = net.ws[i];
@@ -114,8 +118,8 @@ const nn_finite_diff = (net:NN, grad:NN, eps:float, ti:Matrix, to:Matrix) => {
       for (let k = 0; k < m.cols; k++) {
         saved = Mat.at(m, j, k);
         Mat.put(m, j, k, saved + eps);
-        nn_forward(net);
-        Mat.put(g, j, k, (nn_cost(net, ti, to) - c) / eps);
+        forward(net);
+        Mat.put(g, j, k, (cost(net, ti, to) - c) / eps);
         Mat.put(m, j, k, saved);
       }
     }
@@ -127,15 +131,15 @@ const nn_finite_diff = (net:NN, grad:NN, eps:float, ti:Matrix, to:Matrix) => {
       for (let k = 0; k < m.cols; k++) {
         saved = Mat.at(m, j, k);
         Mat.put(m, j, k, saved + eps);
-        nn_forward(net);
-        Mat.put(g, j, k, (nn_cost(net, ti, to) - c) / eps);
+        forward(net);
+        Mat.put(g, j, k, (cost(net, ti, to) - c) / eps);
         Mat.put(m, j, k, saved);
       }
     }
   }
 }
 
-const nn_learn = (net:NN, g:NN, rate:float) => {
+const learn = (net:NN, g:NN, rate:float) => {
   for (let i = 0; i < net.count; i++) {
     for (let j = 0; j < net.ws[i].rows; j++) {
       for (let k = 0; k < net.ws[i].cols; k++) {
@@ -151,26 +155,31 @@ const nn_learn = (net:NN, g:NN, rate:float) => {
   }
 } 
 
-const nn_train = (net:NN, eps:float, rate:float, steps: int, ti:Matrix, to:Matrix) => {
-  const grad = nn_alloc(net.arch);
+const train = (net:NN, eps:float, rate:float, steps: int, ti:Matrix, to:Matrix) => {
+  const grad = alloc(net.arch);
   const start = performance.now();
 
-  for (let i = 0; i < 20000; i++) {
-    nn_finite_diff(net, grad, eps, ti, to);
-    nn_learn(net, grad, rate);
+  log.info(`Training for ${steps} steps...`);
+
+  for (let i = 0; i < steps; i++) {
+    finite_diff(net, grad, eps, ti, to);
+    learn(net, grad, rate);
+    if (SHOW_COST_IN_PROGRESS && i % 1000 == 0) {
+      const c = cost(net, ti, to);
+      log.quiet(`${costRank(c)} ${c}`);
+    }
   }
 
   const time = performance.now() - start;
-  const c = nn_cost(net, ti, to);
+  const c = cost(net, ti, to);
   const rank = costRank(c);
-  log.blue(`${rank} Trained for ${steps} steps in ${time.toFixed(2)}ms`);
+  log.blue(`${rank} Finished in ${time.toFixed(2)}ms`);
 }
 
-const nn_confirm = (net:NN, ti: Matrix, to:Matrix):boolean => {
-
+const confirm = (net:NN, ti: Matrix, to:Matrix):boolean => {
   const input  = net.as[0];
   const output = net.as[net.count];
-  const c = nn_cost(net, ti, to);
+  const c = cost(net, ti, to);
 
   log.quiet(`Final Cost:`, c);
 
@@ -180,7 +189,7 @@ const nn_confirm = (net:NN, ti: Matrix, to:Matrix):boolean => {
   for (let ix = 0; ix < to.rows; ix++) {
     const exp = Mat.at(to, 0, ix);
     Mat.copy(input, Mat.row(ti, ix));
-    nn_forward(net);
+    forward(net);
     const act = Mat.at(output, 0, 0);
     const ok = exp.toString() == act.toFixed(0);
     pass = pass && ok;
@@ -190,7 +199,6 @@ const nn_confirm = (net:NN, ti: Matrix, to:Matrix):boolean => {
   if (!pass) log.red("⚠️  Failed to converge");
   console.log(table([ 'OK', 'x1', 'x2', 'exp', 'act' ], rows));
   return pass;
-
 }
 
 
@@ -212,15 +220,15 @@ export const main = () => {
   const to = Mat.sub(set_xor, 0, 2, 4, 1);
 
   // Network
-  const xor  = nn_alloc([ 2, 2, 1 ], true);
+  const xor  = alloc([ 2, 2, 1 ], true);
 
   // Training params
   const eps  = 10e-1;
   const rate = 10e-1;
 
   // Train
-  nn_train(xor, eps, rate, 50000, ti, to);
-  nn_confirm(xor, ti, to);
+  train(xor, eps, rate, 50000, ti, to);
+  confirm(xor, ti, to);
 
 }
 
