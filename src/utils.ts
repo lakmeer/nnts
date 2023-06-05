@@ -29,7 +29,6 @@ export const logHelper = (name: string):LogHlp => {
 }
 
 export const log = logHelper("NN");
-
 export const { red, green } = C;
 
 
@@ -39,13 +38,14 @@ export const { min, max, sin, cos, exp, log10, pow, sqrt, abs, floor, PI } = Mat
 export const ln = Math.log; // Already used this name
 
 export const rand = ():float => Math.random();
-export const limit = (a, b, n) => min(b, max(a, n));
+export const limit = (a:number, b:number, n:number) => min(b, max(a, n));
 
 
 // Text-mode Tables
 
 // import { AsciiTable3 } from 'ascii-table3' // Vite
 import { AsciiTable3 } from 'npm:ascii-table3'; // Deno
+export { AsciiTable3 };
 
 export const table = (headers:Array<string>, rows:Array<Array<string>>):string => {
   const t = new AsciiTable3().setStyle('unicode-round');
@@ -55,9 +55,11 @@ export const table = (headers:Array<string>, rows:Array<Array<string>>):string =
   return t.toString();
 }
 
-export const tableCompact = (rows:Array<Array<string>>):string => {
-  const t = new AsciiTable3().setStyle('none');
-  t.addRowMatrix(rows);
-  return t.toString();
+
+// Misc
+
+export const assert = (cond:boolean, msg:string) => {
+  if (!cond) throw new Error(msg);
 }
+
 

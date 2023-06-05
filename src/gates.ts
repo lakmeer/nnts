@@ -93,8 +93,6 @@ const MODEL_GATE:ModelTemplate = {
   }
 }
 
-
-
 // Xor is assuming 3-gate model:
 //
 //  x1---OR( w1,  w2, b)
@@ -115,7 +113,6 @@ const MODEL_XOR:ModelTemplate = {
     );
   }
 }
-
 
 const new_model = (name:string, template:ModelTemplate) => {
   return {

@@ -18,9 +18,9 @@ import "./utils.ts";
 
 // Run specific example
 
-import "./nn.ts";
+import { main } from  "./nn.ts";
 
 //import { main } from  './gates.ts';
 
-//main();
+main();
 
