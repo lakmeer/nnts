@@ -195,6 +195,120 @@ const costRank = (n:float) => {
 
 
 
+// More abstract NN Models
+
+type NN = {
+  count: int; // number of layers
+  ws: Matrix[];
+  bs: Matrix[];
+  as: Matrix[];
+}
+
+type Arch = Array<int>;
+
+const nn_alloc = (arch:Arch, seed = false) => {
+  const net:NN = {
+    count: arch.length - 1,
+    ws: [],
+    bs: [],
+    as: []
+  }
+
+  net.as[0] = Mat.alloc(1, arch[0]);
+
+  for (let i = 1; i <= net.count; i++) {
+    net.ws[i-1] = Mat.alloc(net.as[i-1].cols, arch[i], seed);
+    net.bs[i-1] = Mat.alloc(1, arch[i], seed);
+    net.as[i]   = Mat.alloc(1, arch[i]);
+  }
+
+  return net;
+}
+
+const nn_print = (net:NN, label:string) => {
+  log.info(`${label} (${net.count} layers)`);
+  for (let i = 0; i < net.count; i++) {
+    Mat.print(net.ws[i], `w${i}`);
+    Mat.print(net.bs[i], `b${i}`);
+  }
+}
+
+const nn_forward = (net:NN) => {
+  for (let i = 0; i < net.count; i++) {
+    Mat.dot(net.as[i+1], net.as[i], net.ws[i]);
+    Mat.sum(net.as[i+1], net.bs[i]);
+    Mat.apply(net.as[i+1], sigmoid);
+  }
+}
+
+const nn_cost = (net:NN, ti:Matrix, to:Matrix) => {
+  const n = ti.rows;
+  let c = 0;
+
+  for (let i = 0; i < n; i++) {
+
+    Mat.copy(net.as[0], Mat.row(ti, i));
+    nn_forward(net);
+
+    for (let j = 0; j < to.cols; j++) {
+      const exp = Mat.at(to, i, j);
+      const act = Mat.at(net.as[net.count], 0, j);
+      c += (exp - act) ** 2;
+    }
+  }    
+
+  return c / n;
+}
+
+const nn_finite_diff = (net:NN, grad:NN, eps:float, ti:Matrix, to:Matrix) => {
+  let saved:float;
+  const c = nn_cost(net, ti, to);
+
+  for (let i = 0; i < net.count; i++) {
+    let m = net.ws[i];
+    let g = grad.ws[i];
+
+    for (let j = 0; j < m.rows; j++) {
+      for (let k = 0; k < m.cols; k++) {
+        saved = Mat.at(m, j, k);
+        Mat.put(m, j, k, saved + eps);
+        nn_forward(net);
+        Mat.put(g, j, k, (nn_cost(net, ti, to) - c) / eps);
+        Mat.put(m, j, k, saved);
+      }
+    }
+
+    m = net.bs[i];
+    g = grad.bs[i];
+
+    for (let j = 0; j < m.rows; j++) {
+      for (let k = 0; k < m.cols; k++) {
+        saved = Mat.at(m, j, k);
+        Mat.put(m, j, k, saved + eps);
+        nn_forward(net);
+        Mat.put(g, j, k, (nn_cost(net, ti, to) - c) / eps);
+        Mat.put(m, j, k, saved);
+      }
+    }
+  }
+}
+
+const nn_learn = (net:NN, g:NN, rate:float) => {
+  for (let i = 0; i < net.count; i++) {
+    for (let j = 0; j < net.ws[i].rows; j++) {
+      for (let k = 0; k < net.ws[i].cols; k++) {
+        Mat.put(net.ws[i], j, k, Mat.at(net.ws[i], j, k) - rate * Mat.at(g.ws[i], j, k));
+      }
+    }
+
+    for (let j = 0; j < net.bs[i].rows; j++) {
+      for (let k = 0; k < net.bs[i].cols; k++) {
+        Mat.put(net.bs[i], j, k, Mat.at(net.bs[i], j, k) - rate * Mat.at(g.bs[i], j, k));
+      }
+    }
+  }
+} 
+
 
 //
 // Main
@@ -215,12 +329,20 @@ export const main = () => {
   const ti = Mat.sub(set_xor, 0, 0, 4, 2);
   const to = Mat.sub(set_xor, 0, 2, 4, 1);
 
-  const xor  = initXor(true);
-  const grad = initXor();
-
   const eps  = 10e-1;
   const rate = 10e-1;
 
-  train(xor, ti, to, eps, rate, 50000);
+  const arch = [ 2, 2, 1 ];
+  const xor  = nn_alloc(arch, true);
+  const grad = nn_alloc(arch);
+
+  log.info("Cost before:", nn_cost(xor, ti, to));
+  for (let i = 0; i < 1000; i++) {
+    nn_finite_diff(xor, grad, eps, ti, to);
+    nn_learn(xor, grad, rate);
+  }
+
+  log.info("Cost after:", nn_cost(xor, ti, to));
+
 }
 

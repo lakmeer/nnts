@@ -20,7 +20,7 @@ export type Matrix = {
 // Construction and Initialization
 //
 
-// Alloc: New matrix of given size (optionally pre-fill with random values)
+// Alloc: New matrix of given size with it's own buffer (optionally pre-fill with random values)
 export const alloc = (rows: int, cols: int, rand = false): Matrix => {
   const mem = new Float32Array(rows * cols);
   if (rand) {
@@ -28,6 +28,12 @@ export const alloc = (rows: int, cols: int, rand = false): Matrix => {
       mem[i] = Math.random();
     }
   }
+  return { rows, cols, data: mem };
+}
+
+// Alloc: New matrix of given size on top of existing buffer (optionally pre-fill with random values)
+export const allocIn = (rows: int, cols: int, buffer: ArrayBuffer, offset: int): int => {
+  const mem = new Float32Array(buffer, offset, rows * cols);
   return { rows, cols, data: mem };
 }
 
@@ -135,11 +141,11 @@ export const apply = (m: Matrix, fn: (n: float) => float) => {
 
 // Print a matrix
 export const print = (m: Matrix, label?:string) => {
-  const t = new AsciiTable3().setStyle('none');
+  const t = new AsciiTable3().setStyle('unicode-single');
   if (label) t.setTitle(label);
   for (let i = 0; i < m.rows; i++) {
     let row = m.data.subarray(i * m.cols, (i + 1) * m.cols);
-    t.addRow(...Array.from(row).map(i => i.toFixed(9)));
+    t.addRow(...Array.from(row).map(i => i.toFixed(4)));
   }
   console.log(t.toString());
 }
