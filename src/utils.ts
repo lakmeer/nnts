@@ -55,3 +55,9 @@ export const table = (headers:Array<string>, rows:Array<Array<string>>):string =
   return t.toString();
 }
 
+export const tableCompact = (rows:Array<Array<string>>):string => {
+  const t = new AsciiTable3().setStyle('none');
+  t.addRowMatrix(rows);
+  return t.toString();
+}
+

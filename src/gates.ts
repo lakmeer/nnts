@@ -1,13 +1,14 @@
 
-import { log, rand, exp, floor, log10, limit, table, red, green } from "./utils.ts";
+import { logHelper, rand, exp, floor, log10, limit, table, red, green } from "./utils.ts";
 
+const log = logHelper("GYM");
 
 
 //
 // Modelling logic gates
 //
 
-log.quiet("Loaded model: Gates");
+log.quiet("Loaded gym: Gates");
 
 const TRAINING_REPORT = true;
 
