@@ -1,5 +1,5 @@
 
-import { logHelper, rand } from "./utils.ts";
+import { log, rand } from "./utils.ts";
 
 
 
@@ -16,7 +16,8 @@ const TRAINING_REPORT = true;
 // Training Data Sets
 //
 
-type TrainingSet = Array<[float, float, float]>;
+type Weights = Array<float>;
+type TrainingSet = Array<Weights>
 
 const set_or:TrainingSet = [
   [ 0, 0, 0 ],
@@ -72,39 +73,48 @@ type Model = {
   forward: (...inputs:Array<float>) => float;
 }
 
-const MODEL = {
+type FwdFn = (...inputs:Array<float>) => float;
 
-  // 2-input, 1-output logic gates
 
-  GATE: {
-    size: 3,
-    forward: (x1, x2, ...params) => {
-      const [ w1, w2, b ] = params;
-      return sigmoid(x1 * w1 + x2 * w2 + b);
-    }
-  },
+// 2-input, 1-output logic gates
+//  
+//  x1
+//    \
+//     OUT(w1, w2, b) -> y
+//    /
+//  x2
 
-  // Xor is assuming 3-gate model:
-  //
-  //  x1---OR( w1,  w2, b)
-  //    \ /               \
-  //     X                 AND(w1, w2, b) -> y
-  //    / \               /
-  //  x2---NAND(w1, w2, b)
-
-  XOR: {
-    size: 9,
-    forward: (x1, x2, ...params) => {
-      const fwd = MODEL.GATE.forward;
-      const [ or_w1, or_w2, or_b, and_w1, and_w2, and_b, nand_w1, nand_w2, nand_b ] = params;
-      return fwd(
-        fwd(x1, x2, or_w1, or_w2, or_b),
-        fwd(x1, x2, nand_w1, nand_w2, nand_b),
-        and_w1, and_w2, and_b
-      );
-    }
+const MODEL_GATE:ModelTemplate = {
+  size: 3,
+  forward: (x1, x2, ...params) => {
+    const [ w1, w2, b ] = params;
+    return sigmoid(x1 * w1 + x2 * w2 + b);
   }
 }
+
+
+
+// Xor is assuming 3-gate model:
+//
+//  x1---OR( w1,  w2, b)
+//    \ /               \
+//     X                 AND(w1, w2, b) -> y
+//    / \               /
+//  x2---NAND(w1, w2, b)
+
+const MODEL_XOR:ModelTemplate = {
+  size: 9,
+  forward: (x1, x2, ...params) => {
+    const fwd = MODEL_GATE.forward;
+    const [ or_w1, or_w2, or_b, and_w1, and_w2, and_b, nand_w1, nand_w2, nand_b ] = params;
+    return fwd(
+      fwd(x1, x2, or_w1, or_w2, or_b),
+      fwd(x1, x2, nand_w1, nand_w2, nand_b),
+      and_w1, and_w2, and_b
+    );
+  }
+}
+
 
 const new_model = (name:string, template:ModelTemplate) => {
   return {
@@ -125,7 +135,9 @@ const init_model = (name:string, template:ModelTemplate) => {
 // Functions
 //
 
-const cost_of = (model:Model, set:TrainingSet) => (...params):float => {
+type CostFn = ReturnType<typeof cost_of>;
+
+const cost_of = (model:Model, set:TrainingSet) => (...params:Weights):float => {
   let result = 0;
 
   for (let i = 0; i < set.length; i++) {
@@ -155,7 +167,7 @@ const confirm = (model:Model, set:TrainingSet):boolean => {
   for (let ix in set) {
     const [ x1, x2, exp ] = set[ix];
     const act = model.forward(x1, x2, ...model.params);
-    const ok = exp == act.toFixed(0);
+    const ok = exp.toString() == act.toFixed(0);
     const print = ok ? log.ok : log.err;
     pass = pass && ok;
     print(` ${x1}  |  ${x2}  |  ${exp}  |  ${act.toFixed(0)}  (${act})`);
@@ -164,7 +176,7 @@ const confirm = (model:Model, set:TrainingSet):boolean => {
   return pass;
 }
 
-const finite_diff = (params:Array<float>, eps:float, cost):Array<float> => {
+const finite_diff = (params:Array<float>, eps:float, cost:CostFn):Array<float> => {
   const size = params.length;
   const g = Array(size);
   let c = cost(...params);
@@ -226,11 +238,11 @@ export const main = () => {
   const eps  = 1e-2;
   const rate = 1e-1;
 
-  const or   = init_model("OR",   MODEL.GATE);
-  const and  = init_model("AND",  MODEL.GATE);
-  const nand = init_model("NAND", MODEL.GATE);
-  const nor  = init_model("NOR",  MODEL.GATE);
-  const xor  = init_model("XOR",  MODEL.XOR);
+  const or   = init_model("OR",   MODEL_GATE);
+  const and  = init_model("AND",  MODEL_GATE);
+  const nand = init_model("NAND", MODEL_GATE);
+  const nor  = init_model("NOR",  MODEL_GATE);
+  const xor  = init_model("XOR",  MODEL_XOR);
 
   train(or,   set_or,   eps, rate, 50000);
   train(and,  set_and,  eps, rate, 50000);

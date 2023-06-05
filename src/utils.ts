@@ -30,6 +30,8 @@ export const logHelper = (name: string):LogHlp => {
   }
 }
 
+export const log = logHelper("NN");
+
 
 // Math
 
