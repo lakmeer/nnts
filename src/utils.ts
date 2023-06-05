@@ -6,13 +6,11 @@ declare global {
   type int   = number;
 }
 
+
 // Strings, Formatting
 
-// Vite
-//import C from "chalk";
-
-// Deno
-import * as C from "https://deno.land/std@0.187.0/fmt/colors.ts";
+//import C from "chalk"; // Vite
+import * as C from "https://deno.land/std@0.187.0/fmt/colors.ts"; // Deno
 
 type LogFn = (...args: any[]) => void;
 type LogHlp = { [key: string]: LogFn }
@@ -32,8 +30,28 @@ export const logHelper = (name: string):LogHlp => {
 
 export const log = logHelper("NN");
 
+export const { red, green } = C;
+
 
 // Math
 
+export const { min, max, sin, cos, exp, log10, pow, sqrt, abs, floor, PI } = Math;
+export const ln = Math.log; // Already used this name
+
 export const rand = ():float => Math.random();
+export const limit = (a, b, n) => min(b, max(a, n));
+
+
+// Text-mode Tables
+
+// import { AsciiTable3 } from 'ascii-table3' // Vite
+import { AsciiTable3 } from 'npm:ascii-table3'; // Deno
+
+export const table = (headers:Array<string>, rows:Array<Array<string>>):string => {
+  const t = new AsciiTable3().setStyle('unicode-round');
+  for (let i = 0; i < headers.length; i++) t.setAlignCenter(i + 1); 
+  t.setHeading(...headers);
+  t.addRowMatrix(rows);
+  return t.toString();
+}
 

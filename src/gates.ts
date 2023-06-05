@@ -1,5 +1,5 @@
 
-import { log, rand } from "./utils.ts";
+import { log, rand, exp, floor, log10, limit, table, red, green } from "./utils.ts";
 
 
 
@@ -152,27 +152,23 @@ const cost_of = (model:Model, set:TrainingSet) => (...params:Weights):float => {
 }
 
 const sigmoid = (x:float):float => {
-  return 1 / (1 + Math.exp(-x));
+  return 1 / (1 + exp(-x));
 }
 
 const confirm = (model:Model, set:TrainingSet):boolean => {
-  const cost = cost_of(model, set);
-
   let pass = true;
-
-  log.info("----+-----+-----+-----");
-  log.info(" x1 |  x2 | exp | act");
-  log.info("----+-----+-----+-----");
+  const rows = [];
 
   for (let ix in set) {
     const [ x1, x2, exp ] = set[ix];
     const act = model.forward(x1, x2, ...model.params);
     const ok = exp.toString() == act.toFixed(0);
-    const print = ok ? log.ok : log.err;
     pass = pass && ok;
-    print(` ${x1}  |  ${x2}  |  ${exp}  |  ${act.toFixed(0)}  (${act})`);
+    rows.push([ ok ? green("OK") : red("XX"), x1, x2, exp, act.toFixed(0) ]);
   }
 
+  if (!pass) log.red("⚠️  Failed to converge");
+  console.log(table([ 'OK', 'x1', 'x2', 'exp', 'act' ], rows));
   return pass;
 }
 
@@ -214,21 +210,18 @@ const train = (model:Model, set:TrainingSet, eps:number, rate:number, steps:numb
   // Report
   if (!TRAINING_REPORT) return;
 
-  console.log('');
   const c = cost(...model.params);
-  log.blue(`Trained ${model.name} (${model.params.length} params) for ${steps} steps in ${time.toFixed(2)}ms`);
-  log.info(`Final Cost:`, c);
-  log.info(`Cost Rank:`, costMagnitude(c));
-  log.info(`Params: ${model.params.map(v => v.toFixed(3)).join(', ')}`);
+  const rank = costRank(c);
+  log.blue(`${rank} Trained ${model.name} (${model.params.length} params) for ${steps} steps in ${time.toFixed(2)}ms`);
+  log.quiet(`Final Cost:`, c);
+  log.quiet(`Params: ${model.params.map(v => v.toFixed(3)).join(', ')}`);
 
   const passed = confirm(model, set);
-
-  console.log('');
 }
 
-const costMagnitude = (n:float) => {
-  const rank = -Math.floor(Math.log10(n));
-  return Array(rank).fill('⭐').join('');
+const costRank = (n:float) => {
+  const rank = -floor(log10(n));
+  return [ "🔴", "🟠", "🟡", "🟢", "🔵" ][limit(0, 4, rank - 1)];
 }
 
 
