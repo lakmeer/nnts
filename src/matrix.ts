@@ -1,5 +1,6 @@
 
-import { log, assert, AsciiTable3 } from "./utils.ts";
+import { log, assert } from "./utils.ts";
+import { AsciiTable3 } from "./_poly-import.ts";
 
 
 //

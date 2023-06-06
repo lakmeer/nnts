@@ -1,6 +1,9 @@
 lockfileVersion: '6.0'
 
 dependencies:
+  ascii-table3:
+    specifier: ^0.8.2
+    version: 0.8.2
   chalk:
     specifier: ^5.2.0
     version: 5.2.0
@@ -213,6 +216,13 @@ packages:
     dev: true
     optional: true
 
+  /ascii-table3@0.8.2:
+    resolution: {integrity: sha512-L6J5Gcn3hmprVhSY7jVel0cXVo9l37s8UW4UHGoPhWiaOLCcfJ0YBRuO2QpgKnVGulZj8oSVnYZQQA5NWJr6Tg==}
+    engines: {node: '>=11.14.0'}
+    dependencies:
+      printable-characters: 1.0.42
+    dev: false
+
   /chalk@5.2.0:
     resolution: {integrity: sha512-ree3Gqw/nazQAPuJJEy+avdl7QfZMcUvmHIKgEZkGL+xOBzRvup5Hxo6LHuMceSxOabuJLJm5Yp/92R9eMmMvA==}
     engines: {node: ^12.17.0 || ^14.13 || >=16.0.0}
@@ -274,6 +284,10 @@ packages:
       picocolors: 1.0.0
       source-map-js: 1.0.2
     dev: true
+
+  /printable-characters@1.0.42:
+    resolution: {integrity: sha512-dKp+C4iXWK4vVYZmYSd0KBH5F/h1HoZRsbJ82AVKRO3PEo8L4lBS/vLwhVtpwwuYcoIsVY+1JYKR268yn480uQ==}
+    dev: false
 
   /rollup@3.23.0:
     resolution: {integrity: sha512-h31UlwEi7FHihLe1zbk+3Q7z1k/84rb9BSwmBSr/XjOCEaBJ2YyedQDuM0t/kfOS0IxM+vk1/zI9XxYj9V+NJQ==}

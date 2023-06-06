@@ -1,4 +1,7 @@
 
+import { Chalk as C, AsciiTable3 } from "./_poly-import.ts";
+
+
 // Shim C types
 
 declare global {
@@ -8,9 +11,6 @@ declare global {
 
 
 // Strings, Formatting
-
-//import C from "chalk"; // Vite
-import * as C from "https://deno.land/std@0.187.0/fmt/colors.ts"; // Deno
 
 type LogFn = (...args: any[]) => void;
 type LogHlp = { [key: string]: LogFn }
@@ -48,10 +48,6 @@ export const limit = (a:number, b:number, n:number) => min(b, max(a, n));
 
 
 // Text-mode Tables
-
-// import { AsciiTable3 } from 'ascii-table3' // Vite
-import { AsciiTable3 } from 'npm:ascii-table3'; // Deno
-export { AsciiTable3 };
 
 export const table = (headers:Array<string>, rows:Array<Array<any>>):string => {
   const t = new AsciiTable3().setStyle('unicode-round');
