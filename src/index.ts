@@ -50,14 +50,16 @@ const report = (net:Net, ti: Matrix, to:Matrix, inputCols:string[], formatRow:Re
 
     const row = formatRow(input, Mat.row(to, ix), Mat.row(output, 0));
     pass = pass && row[0];
-    const ok = row.unshift() ? green("OK") : red("XX");
+    const ok = row.shift() ? green("OK") : red("XX");
     rows.push([ ok, ...row ]);
   }
 
-  if (!pass) log.red("⚠️  Failed to converge");
-
   const headers = [ 'OK' ].concat(inputCols).concat([ 'exp', 'act' ]);
-  console.log(table(headers, rows));
+
+  if (!pass) {
+    console.log(table(headers, rows));
+    log.red("⚠️  Failed to converge");
+  }
   return pass;
 }
 
@@ -103,35 +105,29 @@ export const adder = (BITS = 2) => {
   const to = Mat.alloc(rows, BITS+1);
 
   for (let i = 0; i < ti.rows; i++) {
-    let x = floor(i/n);
-    let y = i%n;
+    let x = i/n | 0;
+    let y = i%n | 0;
     let z = x + y;
-
-    let overflow = z >= n;
 
     for (let j = 0; j < BITS; j++) {
       Mat.put(ti, i, j,      (x >> j) & 1);
       Mat.put(ti, i, j+BITS, (y >> j) & 1);
-      if (overflow) {
-        Mat.put(to, i, j, 0);
-      } else {
-        Mat.put(to, i, j, (z >> j) & 1);
-      }
+      Mat.put(to, i, j,      (z >> j) & 1);
     }
-    Mat.put(to, i, BITS, overflow ? 1 : 0);
+    Mat.put(to, i, BITS, z >= n ? 1 : 0);
   }
 
 
   // Train Network
 
-  const adder = NN.alloc([ BITS*2, 6, BITS+1 ], true);
-  NN.train(adder, 0, 1, 10000, ti, to);
+  const adder = NN.alloc([ BITS*2, 4*BITS, BITS+1 ], true);
+  NN.train(adder, 0, 1e1, 10000, ti, to);
 
   // Report
   report(adder, ti, to, [ 'x', 'y' ], (inputs, expect, actual) => {
-    const x = Mat.smush(Mat.sub(inputs, 0, 0, BITS, 1));
-    const y = Mat.smush(Mat.sub(inputs, 0, BITS, BITS, 1));
-    const exp = Mat.smush(expect, 0); // To nearest int
+    const x = Mat.smush(Mat.sub(inputs, 0, 0, BITS, 1), 0);
+    const y = Mat.smush(Mat.sub(inputs, 0, BITS, BITS, 1), 0);
+    const exp = Mat.smush(expect, 0);
     const act = Mat.smush(actual, 0);
     const ok = exp == act;
     return [ ok, x, y, exp, act ];
@@ -144,8 +140,8 @@ export const adder = (BITS = 2) => {
 //
 
 const main = () => {
-  xor();
-  adder();
+  //xor();
+  adder(2);
 }
 
 main();
