@@ -30,6 +30,7 @@ export const logHelper = (name: string):LogHlp => {
 
 export const log = logHelper("NN");
 export const { red, green } = C;
+export const pad = (len:number, str:string) => str.padStart(len, ' ');
 
 
 // Arrays

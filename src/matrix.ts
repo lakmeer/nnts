@@ -129,6 +129,18 @@ export const sum = (a: Matrix, b: Matrix) => {
   }
 }
 
+// Add At
+// Add value to specific cell in-place
+export const addAt = (m: Matrix, row: int, col: int, val: float) => {
+  m.data[row * m.cols + col] += val;
+}
+
+// Scale At
+// Multiply value in specific cell in-place
+export const scaleAt = (m: Matrix, row: int, col: int, val: float) => {
+  m.data[row * m.cols + col] *= val;
+}
+
 // Apply: maps a function over all entries
 export const apply = (m: Matrix, fn: (n: float) => float) => {
   m.data.forEach((v, ix) => m.data[ix] = fn(v));
