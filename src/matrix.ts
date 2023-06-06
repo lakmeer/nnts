@@ -32,7 +32,7 @@ export const alloc = (rows: int, cols: int, rand = false): Matrix => {
 }
 
 // Alloc: New matrix of given size on top of existing buffer (optionally pre-fill with random values)
-export const allocIn = (buffer: ArrayBuffer, offset: int, rows: int, cols: int): int => {
+export const allocIn = (buffer: ArrayBuffer, offset: int, rows: int, cols: int): Matrix => {
   const mem = new Float32Array(buffer, offset, rows * cols);
   return { rows, cols, data: mem };
 }
@@ -146,18 +146,29 @@ export const apply = (m: Matrix, fn: (n: float) => float) => {
   m.data.forEach((v, ix) => m.data[ix] = fn(v));
 }
 
+// Equal
+export const eq = (a: Matrix, b: Matrix): boolean => {
+  print(a, 'a');
+  print(b, 'b');
+  if (a.rows !== b.rows || a.cols !== b.cols) return false;
+  for (let i = 0; i < a.data.length; i++) {
+    if (a.data[i] !== b.data[i]) return false;
+  }
+  return true;
+}
+
 
 //
 // Utility Functions
 //
 
 // Print a matrix
-export const print = (m: Matrix, label?:string) => {
+export const print = (m: Matrix, label?:string, sigfig = 4) => {
   const t = new AsciiTable3().setStyle('unicode-single');
   if (label) t.setTitle(label);
   for (let i = 0; i < m.rows; i++) {
     let row = m.data.subarray(i * m.cols, (i + 1) * m.cols);
-    t.addRow(...Array.from(row).map(i => i.toFixed(4)));
+    t.addRow(...Array.from(row).map(i => i.toFixed(sigfig)));
   }
   console.log(t.toString());
 }
@@ -167,6 +178,11 @@ export const rand = (m: Matrix) => {
   for (let i = 0; i < m.data.length; i++) {
     m.data[i] = Math.random();
   }
+}
+
+// Smush into a string
+export const smush = (m: Matrix, sigfig = 3): string => {
+  return Array.from(m.data).map(v => v.toFixed(sigfig)).join(' ');
 }
 
 // Get dimensions

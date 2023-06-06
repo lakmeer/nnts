@@ -6,11 +6,7 @@
 // 🔪 Cutting edge machine-learning framework
 //
 
-import {
-  logHelper, costRank, table, last, pad,
-  limit, red, green,
-  floor, log10, max, exp, 
-} from "./utils.ts";
+import { logHelper, costRank, pad, max, exp, } from "./utils.ts";
 
 import * as Mat from "./matrix.ts";
 import type { Matrix } from "./matrix.ts";
@@ -50,7 +46,7 @@ type MemLayout = {
   size: int;
 }
 
-type NN = {
+export type Net = {
   count: int; // number of layers
   arch: Arch;
   ws: Matrix[];
@@ -63,8 +59,8 @@ type NN = {
 // NN Functions
 //
 
-const alloc = (arch:Arch, seed = false) => {
-  const net:NN = {
+export const alloc = (arch:Arch, seed = false) => {
+  const net:Net = {
     count: arch.length - 1,
     arch: arch,
     ws: [],
@@ -83,7 +79,18 @@ const alloc = (arch:Arch, seed = false) => {
   return net;
 }
 
-const print = (net:NN, label:string) => {
+
+export const zero = (net:Net) => {
+  for (let i = 0; i < net.count; i++) {
+    Mat.fill(net.ws[i], 0);
+    Mat.fill(net.bs[i], 0);
+    Mat.fill(net.as[i], 0);
+  }
+  Mat.fill(net.as[net.count], 0);
+}
+
+
+export const print = (net:Net, label:string) => {
   log.info(`${label} (${net.count} layers)`);
   for (let i = 0; i < net.count; i++) {
     Mat.print(net.ws[i], `w${i}`);
@@ -91,15 +98,7 @@ const print = (net:NN, label:string) => {
   }
 }
 
-const forward = (net:NN) => {
-  for (let i = 0; i < net.count; i++) {
-    Mat.dot(net.as[i+1], net.as[i], net.ws[i]);
-    Mat.sum(net.as[i+1], net.bs[i]);
-    Mat.apply(net.as[i+1], sigmoid);
-  }
-}
-
-const cost = (net:NN, count:int, ti:Matrix, to:Matrix) => {
+export const cost = (net:Net, ti:Matrix, to:Matrix) => {
   const n = ti.rows;
   let c = 0;
 
@@ -109,7 +108,7 @@ const cost = (net:NN, count:int, ti:Matrix, to:Matrix) => {
 
     for (let j = 0; j < to.cols; j++) {
       const exp = Mat.at(to, i, j);
-      const act = Mat.at(net.as[count], 0, j);
+      const act = Mat.at(net.as[net.count], 0, j);
       c += (exp - act) ** 2;
     }
   }    
@@ -117,38 +116,42 @@ const cost = (net:NN, count:int, ti:Matrix, to:Matrix) => {
   return c / n;
 }
 
-const finite_diff = (net:NN, grad:NN, eps:float, ti:Matrix, to:Matrix) => {
-  let saved:float;
-  const c = cost(net, net.count, ti, to);
-
+export const forward = (net:Net) => {
   for (let i = 0; i < net.count; i++) {
-    let m = net.ws[i];
-    let g = grad.ws[i];
-
-    for (let j = 0; j < m.rows; j++) {
-      for (let k = 0; k < m.cols; k++) {
-        saved = Mat.at(m, j, k);
-        Mat.put(m, j, k, saved + eps);
-        Mat.put(g, j, k, (cost(net, net.count, ti, to) - c) / eps);
-        Mat.put(m, j, k, saved);
-      }
-    }
-
-    m = net.bs[i];
-    g = grad.bs[i];
-
-    for (let j = 0; j < m.rows; j++) {
-      for (let k = 0; k < m.cols; k++) {
-        saved = Mat.at(m, j, k);
-        Mat.put(m, j, k, saved + eps);
-        Mat.put(g, j, k, (cost(net, net.count, ti, to) - c) / eps);
-        Mat.put(m, j, k, saved);
-      }
-    }
+    Mat.dot(net.as[i+1], net.as[i], net.ws[i]);
+    Mat.sum(net.as[i+1], net.bs[i]);
+    Mat.apply(net.as[i+1], ACTIVATION);
   }
 }
 
-const learn = (net:NN, g:NN, rate:float) => {
+
+export const train = (net:Net, eps:float, rate:float, steps: int, ti:Matrix, to:Matrix, peekStride = steps/10) => {
+  const grad = alloc(net.arch);
+  const start = performance.now();
+
+  log.info(`Training for ${steps} steps...`);
+
+  for (let i = 0; i < steps; i++) {
+    GRAD_METHOD(net, grad, eps, ti, to);
+    learn(net, grad, rate);
+    if (SHOW_COST_IN_PROGRESS && i % peekStride == 0) {
+      const c = cost(net, ti, to);
+      log.quiet(`[${pad(6, '#' + i)}] ${costRank(c)} ${c}`);
+    }
+  }
+
+  const time = performance.now() - start;
+  const c = cost(net, ti, to);
+  const rank = costRank(c);
+  log.info(`${rank} Finished in ${time.toFixed(2)}ms`);
+}
+
+
+//
+// Gradient Computation Methods
+//
+
+const learn = (net:Net, g:Net, rate:float) => {
   for (let i = 0; i < net.count; i++) {
     for (let j = 0; j < net.ws[i].rows; j++) {
       for (let k = 0; k < net.ws[i].cols; k++) {
@@ -164,55 +167,38 @@ const learn = (net:NN, g:NN, rate:float) => {
   }
 } 
 
-const train = (method: Function, net:NN, eps:float, rate:float, steps: int, ti:Matrix, to:Matrix, peekStride = steps/10) => {
-  const grad = alloc(net.arch);
-  const start = performance.now();
+const finite_diff = (net:Net, grad:Net, eps:float, ti:Matrix, to:Matrix) => {
+  let saved:float;
+  const c = cost(net, ti, to);
 
-  log.info(`Training for ${steps} steps...`);
+  for (let i = 0; i < net.count; i++) {
+    let m = net.ws[i];
+    let g = grad.ws[i];
 
-  for (let i = 0; i < steps; i++) {
-    method(net, grad, eps, ti, to);
-    learn(net, grad, rate);
-    if (SHOW_COST_IN_PROGRESS && i % peekStride == 0) {
-      const c = cost(net, net.count, ti, to);
-      log.quiet(`[${pad(6, '#' + i)}] ${costRank(c)} ${c}`);
+    for (let j = 0; j < m.rows; j++) {
+      for (let k = 0; k < m.cols; k++) {
+        saved = Mat.at(m, j, k);
+        Mat.put(m, j, k, saved + eps);
+        Mat.put(g, j, k, (cost(net, ti, to) - c) / eps);
+        Mat.put(m, j, k, saved);
+      }
+    }
+
+    m = net.bs[i];
+    g = grad.bs[i];
+
+    for (let j = 0; j < m.rows; j++) {
+      for (let k = 0; k < m.cols; k++) {
+        saved = Mat.at(m, j, k);
+        Mat.put(m, j, k, saved + eps);
+        Mat.put(g, j, k, (cost(net, ti, to) - c) / eps);
+        Mat.put(m, j, k, saved);
+      }
     }
   }
-
-  const time = performance.now() - start;
-  const c = cost(net, net.count, ti, to);
-  const rank = costRank(c);
-  log.info(`${rank} Finished in ${time.toFixed(2)}ms`);
 }
 
-
-const confirm = (net:NN, ti: Matrix, to:Matrix):boolean => {
-  const input  = net.as[0];
-  const output = net.as[net.count];
-  const c = cost(net, net.count, ti, to);
-
-  log.quiet(`Final Cost:`, c);
-
-  const rows = [];
-  let pass = true;
-
-  for (let ix = 0; ix < to.rows; ix++) {
-    const exp = Mat.at(to, 0, ix);
-    Mat.copy(input, Mat.row(ti, ix));
-    forward(net);
-    const act = Mat.at(output, 0, 0);
-    const ok = exp.toString() == act.toFixed(0);
-    pass = pass && ok;
-    rows.push([ ok ? green("OK") : red("XX"), Mat.at(input, 0, 0), Mat.at(input, 0, 1), exp, act.toFixed(0) ]);
-  }
-
-  if (!pass) log.red("⚠️  Failed to converge");
-  console.log(table([ 'OK', 'x1', 'x2', 'exp', 'act' ], rows));
-  return pass;
-}
-
-
-const backprop = (net:NN, grad:NN, eps:float, ti:Matrix, to:Matrix) => {
+export const backprop = (net:Net, grad:Net, eps:float, ti:Matrix, to:Matrix) => {
   const n = ti.rows;
 
   // i = current sample
@@ -277,46 +263,10 @@ const backprop = (net:NN, grad:NN, eps:float, ti:Matrix, to:Matrix) => {
 }
 
 
-const zero = (net:NN) => {
-  for (let i = 0; i < net.count; i++) {
-    Mat.fill(net.ws[i], 0);
-    Mat.fill(net.bs[i], 0);
-    Mat.fill(net.as[i], 0);
-  }
-  Mat.fill(net.as[net.count], 0);
-}
-
-
 //
-// Main
+// Configuration
 //
 
-export const main = () => {
-
-  // Training data
-  const set_xor = Mat.create(4, 3, [
-    0, 0, 0,
-    0, 1, 1,
-    1, 0, 1,
-    1, 1, 0
-  ]);
-
-  const ti = Mat.sub(set_xor, 0, 0, 4, 2);
-  const to = Mat.sub(set_xor, 0, 2, 4, 1);
-
-  const eps  = 10e-2;
-  const rate = 10e-2;
-
-
-  // NN Struct
-
-  const xor  = alloc([ 2, 2, 1 ], true);
-  train(finite_diff, xor, 0.01, 0.01, 10000, ti, to);
-  confirm(xor, ti, to);
-
-  const xor2  = alloc([ 2, 2, 1 ], true);
-  train(backprop, xor2, 0, 1, 10000, ti, to);
-  confirm(xor2, ti, to);
-
-}
+const GRAD_METHOD = backprop;
+const ACTIVATION  = sigmoid;
 
