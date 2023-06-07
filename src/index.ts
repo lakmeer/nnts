@@ -102,6 +102,8 @@ export const adder = async (BITS = 2) => {
 
   log.blue("Running ADDER Example");
 
+  Screen.setAspect(1);
+
 
   // Generate training data
 
@@ -126,14 +128,15 @@ export const adder = async (BITS = 2) => {
 
   // Prepare Network
 
-  const net = NN.alloc([ BITS*2, 4*BITS, BITS+1 ], true);
+  const net = NN.alloc([ BITS*2, 4*BITS, 3*BITS, BITS+1 ], true);
   const grad = NN.alloc(net.arch);
 
-  const steps = 10000;
-  const rate = 0.1;
+  const maxSteps = 10000;
+  const maxRank  = 4;  // Number of zeroes before it's good enough
+  const rate = 1;
   const batchSize = 100;
 
-  log.info(`Training for ${steps} steps...`);
+  log.info(`Training for ${maxSteps} steps...`);
 
   let c = 0;
   let step = 0;
@@ -142,33 +145,30 @@ export const adder = async (BITS = 2) => {
   // Training loop
 
   const trainBatch = async () => {
-    for (let i = step; i < step + batchSize; i++) {
+    for (let i = 0; i < batchSize; i++) {
       NN.backprop(net, grad, 0, ti, to);
       NN.learn(net, grad, rate);
     }
 
     step += batchSize;
-    c = NN.cost(net, ti, to);
-    //log.quiet(`[${pad(6, '#' + step)}] ${costRank(c)} ${c}`);
 
     // Draw new frame
     Screen.all((ctx, { w, h }) => {
       Screen.clear();
       Screen.grid('grey',  0, 0, w, h, 20);
       Screen.grid('white', 0, 0, w, h, 2);
-      Screen.zone(0, h/4, w/2, h/2, (ctx, size) => drawNetwork(net, ctx, size));
+      Screen.zone(0, h/16, w, h - h/8, (ctx, size) => drawNetwork(net, ctx, size));
+      //Screen.zone(0, h/4, w/2, h/2, (ctx, size) => drawNetwork(net, ctx, size));
     });
 
-    if (step < steps) {
+    c = NN.cost(net, ti, to);
+    log.quiet(`[${pad(6, '#' + step)}] ${costRank(c, true)} ${c}`);
+
+    if (step < maxSteps && costRank(c) <= maxRank) {
       await new Promise(requestAnimationFrame);
       await trainBatch();
     }
   }
-
-
-  // Graphics setup
-
-  Screen.setAspect(1);
 
 
   // Begin training
@@ -203,7 +203,7 @@ const drawNetwork = (net:Net, ctx, { w, h }) => {
   const numLayers = net.arch.length;
   const xStride = w/net.arch.length;
 
-  const r = min(h/30, 0.9 * h / (2 * Math.max(...net.arch)));
+  const r = min(h/35, 0.9 * h / (2 * Math.max(...net.arch)));
 
   // Each layer
   for (let layer = 0; layer < numLayers; layer++) {
@@ -241,7 +241,7 @@ const drawNetwork = (net:Net, ctx, { w, h }) => {
 //
 
 const main = () => {
-  adder(2);
+  adder(3);
 }
 
 main();
