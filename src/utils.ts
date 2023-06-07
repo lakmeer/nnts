@@ -45,16 +45,41 @@ export const ln = Math.log; // Already used this name
 
 export const rand = ():float => Math.random();
 export const limit = (a:number, b:number, n:number) => min(b, max(a, n));
+export const lerp = (a:number, b:number, t:number):number => a + (b - a) * t;
+export const sigmoid = (x:float):float => 1 / (1 + exp(-x));
 
 
 // Text-mode Tables
 
 export const table = (headers:Array<string>, rows:Array<Array<any>>):string => {
-  const t = new AsciiTable3().setStyle('unicode-round');
-  for (let i = 0; i < headers.length; i++) t.setAlignCenter(i + 1); 
-  t.setHeading(...headers);
-  t.addRowMatrix(rows);
-  return t.toString();
+  try {
+    const t = new AsciiTable3().setStyle('unicode-round');
+    for (let i = 0; i < headers.length; i++) t.setAlignCenter(i + 1); 
+    t.setHeading(...headers);
+    t.addRowMatrix(rows);
+    return t.toString();
+  } catch (e) {
+    return "AsciiTable3 failed";
+  }
+}
+
+
+// Colors
+
+export const ORANGE  = [ 245,  147,  34  ];
+export const NEUTRAL = [ 232,  234,  235 ];
+export const BLUE    = [ 8,    119,  189 ];
+
+export const colorLerp = (a:number[], b:number[], t:number):string =>
+  [ lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t) ];
+
+export const rgb = (c:number[]):string => `rgb(${c.join(',')})`;
+
+export const weightColor = (w:number) => {
+  const s = sigmoid(w)*2 - 1;
+  return w < 0
+    ? colorLerp(NEUTRAL, ORANGE, -s)
+    : colorLerp(NEUTRAL, BLUE,    s);
 }
 
 
@@ -68,5 +93,4 @@ export const costRank = (n:float) => {
   const rank = -floor(log10(n));
   return [ "🔴", "🟠", "🟡", "🟢", "🔵" ][limit(0, 4, rank - 1)];
 }
-
 

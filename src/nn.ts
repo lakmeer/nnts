@@ -131,11 +131,15 @@ export const train = (net:Net, eps:float, rate:float, steps: int, ti:Matrix, to:
 
   log.info(`Training for ${steps} steps...`);
 
+  const costHistory = [];
+
   for (let i = 0; i < steps; i++) {
     GRAD_METHOD(net, grad, eps, ti, to);
     learn(net, grad, rate);
+    const c = cost(net, ti, to);
+    costHistory.push(c);
+
     if (SHOW_COST_IN_PROGRESS && i % peekStride == 0) {
-      const c = cost(net, ti, to);
       log.quiet(`[${pad(6, '#' + i)}] ${costRank(c)} ${c}`);
     }
   }
@@ -144,6 +148,8 @@ export const train = (net:Net, eps:float, rate:float, steps: int, ti:Matrix, to:
   const c = cost(net, ti, to);
   const rank = costRank(c);
   log.info(`${rank} Finished in ${time.toFixed(2)}ms`);
+
+  return costHistory;
 }
 
 
