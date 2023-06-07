@@ -56,15 +56,21 @@ const resetCanvas = () => {
 
 // Simplified drawing API
 
-const doFrame = () => {
-  frameFn(ctx, size);
+const doFrame = (args = []) => {
+  frameFn(ctx, size, args);
 }
 
 const setAspect = (aspect) => {
   aspect = aspect;
 }
 
+export const clear = (c = 'black') => {
+  ctx.fillStyle = c;
+  ctx.fillRect(0, 0, size.w, size.h);
+}
+
 export const line = (c, x1, y1, x2, y2) => {
+  ctx.lineWidth = 2;
   ctx.strokeStyle = c;
   ctx.beginPath();
   ctx.moveTo(x1, y1);
@@ -101,6 +107,8 @@ export const zone = (x, y, w, h, fn) => {
   ctx.restore();
 }
 
+export const all = (fn) => zone(0, 0, size.w, size.h, fn);
+
 
 // Listeners
 
@@ -116,7 +124,11 @@ setupCanvas();
 
 const onFrame = (fn) => {
   frameFn = fn;
-  requestAnimationFrame(doFrame);
+  requestAnimationFrame(doFrame.bind(null, []));
+}
+
+const poke = (...args) => {
+  requestAnimationFrame(doFrame.bind(null, args));
 }
 
 export {
@@ -124,6 +136,7 @@ export {
   ctx,
   size,
   onFrame,
+  poke,
   setAspect,
 }
 

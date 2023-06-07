@@ -19,8 +19,6 @@ import type { Matrix } from "./matrix.ts";
 const log = logHelper("NN");
 log.quiet("Loaded NN");
 
-const SHOW_COST_IN_PROGRESS = true;
-
 
 //
 // Activation Library
@@ -125,39 +123,12 @@ export const forward = (net:Net) => {
 }
 
 
-export const train = (net:Net, eps:float, rate:float, steps: int, ti:Matrix, to:Matrix, peekStride = steps/10) => {
-  const grad = alloc(net.arch);
-  const start = performance.now();
-
-  log.info(`Training for ${steps} steps...`);
-
-  const costHistory = [];
-
-  for (let i = 0; i < steps; i++) {
-    GRAD_METHOD(net, grad, eps, ti, to);
-    learn(net, grad, rate);
-    const c = cost(net, ti, to);
-    costHistory.push(c);
-
-    if (SHOW_COST_IN_PROGRESS && i % peekStride == 0) {
-      log.quiet(`[${pad(6, '#' + i)}] ${costRank(c)} ${c}`);
-    }
-  }
-
-  const time = performance.now() - start;
-  const c = cost(net, ti, to);
-  const rank = costRank(c);
-  log.info(`${rank} Finished in ${time.toFixed(2)}ms`);
-
-  return costHistory;
-}
-
 
 //
 // Gradient Computation Methods
 //
 
-const learn = (net:Net, g:Net, rate:float) => {
+export const learn = (net:Net, g:Net, rate:float) => {
   for (let i = 0; i < net.count; i++) {
     for (let j = 0; j < net.ws[i].rows; j++) {
       for (let k = 0; k < net.ws[i].cols; k++) {
@@ -173,7 +144,7 @@ const learn = (net:Net, g:Net, rate:float) => {
   }
 } 
 
-const finite_diff = (net:Net, grad:Net, eps:float, ti:Matrix, to:Matrix) => {
+export const finite_diff = (net:Net, grad:Net, eps:float, ti:Matrix, to:Matrix) => {
   let saved:float;
   const c = cost(net, ti, to);
 
