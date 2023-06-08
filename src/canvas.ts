@@ -64,13 +64,13 @@ const setAspect = (aspect) => {
   aspect = aspect;
 }
 
-export const clear = (c = 'black') => {
+export const clear = (c = BLACK) => {
   ctx.fillStyle = c;
   ctx.fillRect(0, 0, size.w, size.h);
 }
 
-export const line = (c, x1, y1, x2, y2) => {
-  ctx.lineWidth = 2;
+export const line = (c, x1, y1, x2, y2, w = 2) => {
+  ctx.lineWidth = w;
   ctx.strokeStyle = c;
   ctx.beginPath();
   ctx.moveTo(x1, y1);
@@ -108,6 +108,58 @@ export const zone = (x, y, w, h, fn) => {
 }
 
 export const all = (fn) => zone(0, 0, size.w, size.h, fn);
+
+
+//
+// Specialised Drawing API
+//
+
+import type { NN } from './nn';
+import * as Mat from './matrix';
+import { min, rgb, weightColor, plainColor } from './utils';
+
+
+// Draw a whole network
+// - radiusScale makes the visual elements bigger
+// - weightScale bumps heterogeneous weight values into a visible color range.
+
+export const drawNetwork = (net:Net, { w, h }, radiusScale = 1, weightScale = 1, noColor = false) => {
+  const numLayers = net.arch.length;
+  const xStride = w/net.arch.length;
+
+  const r = min(h/35, radiusScale * 0.9 * h / (2 * Math.max(...net.arch)));
+
+  const color = noColor ? plainColor : weightColor;
+
+  // Each layer
+  for (let layer = 0; layer < numLayers; layer++) {
+    const numNeurons = net.arch[layer];
+    const yStride = h/numNeurons;
+    const x = xStride/2 + layer * xStride;
+    const c = `hsl(${ 360/numLayers * layer }, 100%, 50%)`;
+
+    // Each neuron in layer
+    for (let i = 0; i < numNeurons; i++) {
+      const y = yStride/2 + i * yStride;
+
+      // Draw connections to next layer
+      if (layer < numLayers - 1) {
+        const nextNumNeurons = net.arch[layer+1];
+        const nextYStride = h/nextNumNeurons;
+
+        for (let j = 0; j < nextNumNeurons; j++) {
+          const w = Mat.at(net.ws[layer], i, j);
+          const nextY = nextYStride/2 + j * nextYStride;
+          line(rgb(color(w, weightScale)), x, y, x+xStride, nextY, radiusScale);
+        }
+      }
+
+      // Draw neuron
+      const b = layer == 0 ? 0 : Mat.at(net.bs[layer-1], 0, i);
+      circle(rgb(color(b, weightScale)), x, y, r * radiusScale);
+    }
+  }
+}
 
 
 // Listeners

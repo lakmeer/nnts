@@ -59,7 +59,7 @@ export const table = (headers:Array<string>, rows:Array<Array<any>>):string => {
     t.addRowMatrix(rows);
     return t.toString();
   } catch (e) {
-    return "AsciiTable3 failed";
+    return C.dim("(AsciiTable3 failed)");
   }
 }
 
@@ -69,17 +69,23 @@ export const table = (headers:Array<string>, rows:Array<Array<any>>):string => {
 export const ORANGE  = [ 245,  147,  34  ];
 export const NEUTRAL = [ 232,  234,  235 ];
 export const BLUE    = [ 8,    119,  189 ];
+export const DARK    = [ 33,   33,   33  ];
 
 export const colorLerp = (a:number[], b:number[], t:number):string =>
   [ lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t) ];
 
 export const rgb = (c:number[]):string => `rgb(${c.join(',')})`;
 
-export const weightColor = (w:number) => {
-  const s = sigmoid(w)*2 - 1;
+export const weightColor = (w:number, z:number) => {
+  const s = sigmoid(w*z)*2 - 1;
   return w < 0
     ? colorLerp(NEUTRAL, ORANGE, -s)
     : colorLerp(NEUTRAL, BLUE,    s);
+}
+
+export const plainColor = (w:number, z:number) => {
+  const s = sigmoid(w*z)*2 - 1;
+  return colorLerp(DARK, NEUTRAL, s);
 }
 
 

@@ -64,22 +64,102 @@ const report = (net:Net, ti: Matrix, to:Matrix, inputCols:string[], formatRow:Re
 
 
 //
+//
+// Training Loop
+//
+
+
+export const train = async (net:NN, ti, to, maxSteps = 10000, maxRank = 4, rate = 1, batchSize = maxSteps/100) => {
+
+  Screen.setAspect(1);
+
+
+  // Prepare Gradient Network
+
+  const grad = NN.alloc(net.arch);
+
+  log.info(`Training for ${maxSteps} steps...`);
+
+  let c = 0;
+  let step = 0;
+
+
+  // Training loop
+
+  const trainBatch = async () => {
+    for (let i = 0; i < batchSize; i++) {
+      NN.backprop(net, grad, 0, ti, to);
+      NN.learn(net, grad, rate);
+    }
+
+    // Draw new frame
+    Screen.all((ctx, { w, h }) => {
+      Screen.clear();
+      Screen.grid('grey',  0, 0, w, h, 20);
+      Screen.grid('white', 0, 0, w, h, 2);
+
+      Screen.zone(0, h/4, w/2, h/2, (ctx, size) => {
+        Screen.drawNetwork(grad, size, 1.3, 1000, true);
+        Screen.drawNetwork(net,  size, 1,   10);
+      });
+    });
+
+    step += batchSize;
+    c = NN.cost(net, ti, to);
+    log.quiet(`[${pad(7, '#' + step)}] ${costRank(c, true)} ${c}`);
+
+    if (step < maxSteps && costRank(c) <= maxRank) {
+      await new Promise(requestAnimationFrame);
+      await trainBatch();
+    }
+  }
+
+
+  // Begin training
+
+  const start = performance.now();
+  await trainBatch();
+  const time = performance.now() - start;
+  const rank = costRank(c);
+
+  if (rank < maxRank) {
+    log.err(`Stopping at rank ${rank} after ${step} steps.`);
+  } else {
+    log.ok(`Finished in ${time.toFixed(2)}ms and ${step} steps`);
+  }
+
+}
+
+
+//
 // Examples
 //
 
-export const xor = () => {
+export const xor = async () => {
 
   log.blue("Running XOR Example");
 
+
   // XOR Training data
+
   const ti = Mat.create(4, 2, [ 0, 0,    0, 1,    1, 0,    1, 1   ]);
   const to = Mat.create(4, 1, [       1,       0,       0,      1 ]);
 
+
   // Train XOR Network
+
+  const maxSteps  = 100000;
+  const maxRank   = 4;  // Number of zeroes before it's good enough
+  const rate      = 0.5;
+  const batchSize = 1000;
+
   const xor = NN.alloc([ 2, 2, 1 ], true);
-  const cost = NN.train(xor, 0, 1, 10000, ti, to);
+
+  await train(xor, ti, to, maxSteps, maxRank, rate, batchSize);
+
 
   // Report
+
   report(xor, ti, to, [ 'a', 'b' ], (inputs, expect, actual) => {
     return [
       Mat.smush(expect, 0) == Mat.smush(actual, 0),
@@ -89,21 +169,10 @@ export const xor = () => {
       Mat.smush(actual, 0)
     ]
   });
-
-  return {
-    net: xor,
-    cost: cost,
-  }
-
 }
 
 
-export const adder = async (BITS = 2) => {
-
-  log.blue("Running ADDER Example");
-
-  Screen.setAspect(1);
-
+const adder = async (BITS:number) => {
 
   // Generate training data
 
@@ -126,58 +195,16 @@ export const adder = async (BITS = 2) => {
   }
 
 
-  // Prepare Network
+  // Train network
+
+  const maxSteps  = 100000;
+  const maxRank   = 4;  // Number of zeroes before it's good enough
+  const rate      = 1;
+  const batchSize = 1000;
 
   const net = NN.alloc([ BITS*2, 4*BITS, 3*BITS, BITS+1 ], true);
-  const grad = NN.alloc(net.arch);
 
-  const maxSteps = 10000;
-  const maxRank  = 4;  // Number of zeroes before it's good enough
-  const rate = 1;
-  const batchSize = 100;
-
-  log.info(`Training for ${maxSteps} steps...`);
-
-  let c = 0;
-  let step = 0;
-
-
-  // Training loop
-
-  const trainBatch = async () => {
-    for (let i = 0; i < batchSize; i++) {
-      NN.backprop(net, grad, 0, ti, to);
-      NN.learn(net, grad, rate);
-    }
-
-    step += batchSize;
-
-    // Draw new frame
-    Screen.all((ctx, { w, h }) => {
-      Screen.clear();
-      Screen.grid('grey',  0, 0, w, h, 20);
-      Screen.grid('white', 0, 0, w, h, 2);
-      Screen.zone(0, h/16, w, h - h/8, (ctx, size) => drawNetwork(net, ctx, size));
-      //Screen.zone(0, h/4, w/2, h/2, (ctx, size) => drawNetwork(net, ctx, size));
-    });
-
-    c = NN.cost(net, ti, to);
-    log.quiet(`[${pad(6, '#' + step)}] ${costRank(c, true)} ${c}`);
-
-    if (step < maxSteps && costRank(c) <= maxRank) {
-      await new Promise(requestAnimationFrame);
-      await trainBatch();
-    }
-  }
-
-
-  // Begin training
-
-  const start = performance.now();
-  await trainBatch();
-  const time = performance.now() - start;
-  const rank = costRank(c);
-  log.info(`${rank} Finished in ${time.toFixed(2)}ms`);
+  await train(net, ti, to, maxSteps, maxRank, rate, batchSize);
 
 
   // Report
@@ -195,55 +222,15 @@ export const adder = async (BITS = 2) => {
 }
 
 
-//
-// Draw a Network
-//
-
-const drawNetwork = (net:Net, ctx, { w, h }) => {
-  const numLayers = net.arch.length;
-  const xStride = w/net.arch.length;
-
-  const r = min(h/35, 0.9 * h / (2 * Math.max(...net.arch)));
-
-  // Each layer
-  for (let layer = 0; layer < numLayers; layer++) {
-    const numNeurons = net.arch[layer];
-    const yStride = h/numNeurons;
-    const x = xStride/2 + layer * xStride;
-    const c = `hsl(${ 360/numLayers * layer }, 100%, 50%)`;
-
-    // Each neuron in layer
-    for (let i = 0; i < numNeurons; i++) {
-      const y = yStride/2 + i * yStride;
-
-      // Draw connections to next layer
-      if (layer < numLayers - 1) {
-        const nextNumNeurons = net.arch[layer+1];
-        const nextYStride = h/nextNumNeurons;
-
-        for (let j = 0; j < nextNumNeurons; j++) {
-          const w = Mat.at(net.ws[layer], i, j);
-          const nextY = nextYStride/2 + j * nextYStride;
-          Screen.line(rgb(weightColor(w)), x, y, x+xStride, nextY);
-        }
-      }
-
-      // Draw neuron
-      const b = layer == 0 ? 0 : Mat.at(net.bs[layer-1], 0, i);
-      Screen.circle(rgb(weightColor(b)), x, y, r);
-    }
-  }
-}
-
 
 //
 // Main
 //
 
-const main = () => {
-  adder(3);
+export const main = () => {
+  //xor();
+  adder(2);
 }
 
 main();
-
 
