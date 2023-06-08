@@ -64,9 +64,9 @@ const setAspect = (aspect) => {
   aspect = aspect;
 }
 
-export const clear = (c = BLACK) => {
-  ctx.fillStyle = c;
-  ctx.fillRect(0, 0, size.w, size.h);
+export const clear = (x = 0, y = 0, w = size.w, h = size.h) => {
+  ctx.fillStyle = BLACK;
+  ctx.fillRect(x, y, w, h);
 }
 
 export const line = (c, x1, y1, x2, y2, w = 2) => {
@@ -107,7 +107,17 @@ export const zone = (x, y, w, h, fn) => {
   ctx.restore();
 }
 
+export const pad = (size, scale, fn) => {
+  zone(size.w*(1-scale)/2, size.h*(1-scale)/2, size.w*scale, size.h*scale, fn);
+}
+
 export const all = (fn) => zone(0, 0, size.w, size.h, fn);
+
+export const text = (text, x, y, c, size) => {
+  ctx.fillStyle = c;
+  ctx.font = `${size}px monospace`;
+  ctx.fillText(text, x, y);
+}
 
 
 //
@@ -116,7 +126,7 @@ export const all = (fn) => zone(0, 0, size.w, size.h, fn);
 
 import type { NN } from './nn';
 import * as Mat from './matrix';
-import { min, rgb, weightColor, plainColor } from './utils';
+import { min, rgb, weightColor, plainColor, log10 } from './utils';
 
 
 // Draw a whole network
@@ -150,7 +160,7 @@ export const drawNetwork = (net:Net, { w, h }, radiusScale = 1, weightScale = 1,
         for (let j = 0; j < nextNumNeurons; j++) {
           const w = Mat.at(net.ws[layer], i, j);
           const nextY = nextYStride/2 + j * nextYStride;
-          line(rgb(color(w, weightScale)), x, y, x+xStride, nextY, radiusScale);
+          line(rgb(color(w, weightScale)), x, y, x+xStride, nextY, radiusScale*radiusScale);
         }
       }
 
@@ -160,6 +170,27 @@ export const drawNetwork = (net:Net, { w, h }, radiusScale = 1, weightScale = 1,
     }
   }
 }
+
+
+// Time Series Plot
+// - expectedY - maximum expected value of data points in the series
+
+export const plotSeriesLog = (data, { w, h }, color) => {
+  const xStep = w/data.length;
+  const maxY =  Math.max(...data);
+
+  for (let i = 0; i < data.length - 1; i++) {
+    const x1 = i * xStep;
+    const y1 = h - h * data[i]/maxY;
+    const x2 = (i+1) * xStep;
+    const y2 = h - h * data[i+1]/maxY;
+    line(color, x1, y1, x2, y2, 2);
+  }
+
+  line('white', 0, h, w, h, 1);
+}
+
+
 
 
 // Listeners

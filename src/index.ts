@@ -12,7 +12,7 @@
 
 // Custom imports
 
-import { pad, costRank, weightColor, logHelper, sigmoid, red, green, table, floor, max, min, rgb, colorLerp } from "./utils.ts";
+import { limit, unbend, abs, pad, last, costRank, weightColor, logHelper, sigmoid, red, green, table, floor, max, min, rgb, colorLerp } from "./utils.ts";
 import * as Screen from './canvas';
 
 const log = logHelper("GYM");
@@ -68,8 +68,13 @@ const report = (net:Net, ti: Matrix, to:Matrix, inputCols:string[], formatRow:Re
 // Training Loop
 //
 
+export const train = async (net:NN, ti, to, options = {}) => {
 
-export const train = async (net:NN, ti, to, maxSteps = 10000, maxRank = 4, rate = 1, batchSize = maxSteps/100) => {
+  const maxSteps  = options.maxSteps  ?? 10000;
+  const maxRank   = options.maxRank   ?? 4;
+  const rate      = options.rate      ?? 1;
+  const batchSize = options.batchSize ?? 100;
+  const aggression = options.aggression ?? 0;
 
   Screen.setAspect(1);
 
@@ -80,38 +85,74 @@ export const train = async (net:NN, ti, to, maxSteps = 10000, maxRank = 4, rate 
 
   log.info(`Training for ${maxSteps} steps...`);
 
-  let c = 0;
+  let c = 1;
+  let costHist = [];
   let step = 0;
+
+  //let g = 0;
+  //let gradHist = [];
 
 
   // Training loop
 
   const trainBatch = async () => {
+
+    //const r = rate;
+    const a = limit(1, 10, 1/(c + 1 - aggression * (step/maxSteps)));
+    const r = rate/2 + rate/2 * a; // scale learning rate as cost drops
+
+    // Apply backpropagated gradient
     for (let i = 0; i < batchSize; i++) {
       NN.backprop(net, grad, 0, ti, to);
-      NN.learn(net, grad, rate);
+      NN.learn(net, grad, r);
     }
+
+    // Review batch
+    step += batchSize;
+    c = NN.cost(net, ti, to);
+    costHist.push(c);
+
+    // "Gradient velocity"
+    //NN.forward(grad);
+    //g =  grad.ws.reduce((sum, mat) => mat.data.reduce((sum, v) => sum + abs(v), sum), 0);
+    //g += grad.bs.reduce((sum, mat) => mat.data.reduce((sum, v) => sum + abs(v), sum), 0);
+    //g += grad.as.reduce((sum, mat) => mat.data.reduce((sum, v) => sum + abs(v), sum), 0);
+    //gradHist.push(abs(nc - c));
+
+    const running = step < maxSteps && costRank(c) <= maxRank;
 
     // Draw new frame
     Screen.all((ctx, { w, h }) => {
-      Screen.clear();
-      Screen.grid('grey',  0, 0, w, h, 20);
-      Screen.grid('white', 0, 0, w, h, 2);
 
-      Screen.zone(0, h/4, w/2, h/2, (ctx, size) => {
-        Screen.drawNetwork(grad, size, 1.3, 1000, true);
-        Screen.drawNetwork(net,  size, 1,   10);
+      Screen.clear();
+
+      Screen.grid('grey',  0, 0, w, h, 16);
+      //Screen.grid('white', 0, 0, w, h, 2);
+
+      Screen.zone(0, h/4, w, h*3/4, (ctx, size) => {
+        Screen.pad(size, 0.9, (ctx, size) => {
+          Screen.drawNetwork(grad, size, 1.2, 10000, true);
+          Screen.drawNetwork(net,  size, 1,   10);
+        });
       });
+
+      Screen.zone(0, 0, w, h/4, (ctx, size) => {
+        //Screen.plotSeriesLog(gradHist, size, 'limegreen');
+        Screen.plotSeriesLog(costHist, size, '#ff3355');
+      });
+
+      Screen.text(`Cost: ${c.toFixed(7)}  Rate: ${r.toFixed(4)}  Step: ${step}/${maxSteps}`, 10, 25, 'white', 22);
+      Screen.text(`${running ? 'TRAINING' : 'FINISHED' } ${costRank(c, true)}`, w - 160, 25, 'white', 22);
     });
 
-    step += batchSize;
-    c = NN.cost(net, ti, to);
-    log.quiet(`[${pad(7, '#' + step)}] ${costRank(c, true)} ${c}`);
-
-    if (step < maxSteps && costRank(c) <= maxRank) {
+    // Stop if we're not improving
+    if (running) {
       await new Promise(requestAnimationFrame);
       await trainBatch();
     }
+
+    // Gym might be interested in the final gradient network
+    return grad;
   }
 
 
@@ -148,14 +189,9 @@ export const xor = async () => {
 
   // Train XOR Network
 
-  const maxSteps  = 100000;
-  const maxRank   = 4;  // Number of zeroes before it's good enough
-  const rate      = 0.5;
-  const batchSize = 1000;
-
   const xor = NN.alloc([ 2, 2, 1 ], true);
 
-  await train(xor, ti, to, maxSteps, maxRank, rate, batchSize);
+  await train(xor, ti, to, { rate: 0.5 });
 
 
   // Report
@@ -197,14 +233,18 @@ const adder = async (BITS:number) => {
 
   // Train network
 
-  const maxSteps  = 100000;
-  const maxRank   = 4;  // Number of zeroes before it's good enough
-  const rate      = 1;
-  const batchSize = 1000;
 
   const net = NN.alloc([ BITS*2, 4*BITS, 3*BITS, BITS+1 ], true);
 
-  await train(net, ti, to, maxSteps, maxRank, rate, batchSize);
+  await train(net, ti, to, {
+    maxSteps:  10000,
+    maxRank:   3,
+    rate:      5,
+    batchSize: 10,
+    offset:    0.0,
+    color: 'limegreen',
+    aggression: 0.0
+  });
 
 
   // Report
@@ -218,7 +258,7 @@ const adder = async (BITS:number) => {
     return [ ok, x, y, exp, act ];
   });
 
-  return adder;
+  return net;
 }
 
 
@@ -229,7 +269,7 @@ const adder = async (BITS:number) => {
 
 export const main = () => {
   //xor();
-  adder(2);
+  adder(4);
 }
 
 main();

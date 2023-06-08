@@ -47,6 +47,7 @@ export const rand = ():float => Math.random();
 export const limit = (a:number, b:number, n:number) => min(b, max(a, n));
 export const lerp = (a:number, b:number, t:number):number => a + (b - a) * t;
 export const sigmoid = (x:float):float => 1 / (1 + exp(-x));
+export const unbend = (n) => 1 - (1 - n) * (1 - n);
 
 
 // Text-mode Tables
@@ -85,7 +86,7 @@ export const weightColor = (w:number, z:number) => {
 
 export const plainColor = (w:number, z:number) => {
   const s = sigmoid(w*z)*2 - 1;
-  return colorLerp(DARK, NEUTRAL, s);
+  return colorLerp(DARK, NEUTRAL, 1 - (1 - s)*(1 - s));
 }
 
 
@@ -97,6 +98,6 @@ export const assert = (cond:boolean, msg:string) => {
 
 export const costRank = (n:float, symbol = false) => {
   const rank = -floor(log10(n));
-  return symbol ? [ "🔴", "🟠", "🟡", "🟢", "🔵" ][limit(0, 4, rank - 1)] : rank;
+  return symbol ? [ "🔴", "🟠", "🟡", "🟢", "🔵", "🟣" ][limit(0, 4, rank - 1)] : rank;
 }
 
