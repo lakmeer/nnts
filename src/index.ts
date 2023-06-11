@@ -78,6 +78,7 @@ export const train = async (net:NN, ti, to, options = {}, img, w, h, upSize = 2)
 
     // Apply backpropagated gradient
     for (let i = 0; i < epochSize; i++) {
+
       NN.backprop(net, grad, 0, ti, to);
       NN.learn(net, grad, r);
       c = NN.cost(net, ti, to);
@@ -103,10 +104,10 @@ export const train = async (net:NN, ti, to, options = {}, img, w, h, upSize = 2)
 
         const i = (x + y * h);
         const b = abs(Mat.at(net.as[net.count], 0, 0));
-        const expect = Mat.at(to, i, 0);
+        const expect = input.pget(x, y)[0]/255;
 
         output.vset(x, y, [ b, b, b ]);
-        diff.pset(x, y, weightColor(b - expect, 1, true));
+        diff.pset(x, y, weightColor(expect - b, 1, true));
       }
     }
 
@@ -273,20 +274,19 @@ const netToImg = (net:Network, surface:Surface, w:number, h:number, z = 1) => {
   return surface;
 }
 
-const imageMatToTrainingPair = (a:Mat) => {
-  const ti = Mat.alloc(a.rows * a.cols, 2);
-  const to = Mat.alloc(a.rows * a.cols, 1);
+const imageMatToTrainingData = (a:Mat) => {
+  const ti = Mat.alloc(a.rows * a.cols, 3);
 
   for (let x = 0; x < a.cols; x += 1) {
     for (let y = 0; y < a.rows; y += 1) {
       const row = x + y * a.rows;
       Mat.put(ti, row, 0, x/a.rows);
       Mat.put(ti, row, 1, y/a.cols);
-      Mat.put(to, row, 0, Mat.get(a, y, x));
+      Mat.put(ti, row, 2, Mat.get(a, y, x));
     }
   }
 
-  return [ ti, to ];
+  return ti;
 }
 
 const all = document.createElement('div');
@@ -336,6 +336,7 @@ type Surface = {
   update: () => void,
   pset: (x:number, y:number, c:[number, number, number, number?]) => void,
   vset: (x:number, y:number, c:[number, number, number]) => void,
+  pget: (x:number, y:number) => [number, number, number, number],
 }
 
 const newSurface = (w:number, h:number, img?):Surface => {
@@ -365,6 +366,15 @@ const newSurface = (w:number, h:number, img?):Surface => {
     vset,
     data: imageData.data,
     update: () => ctx.putImageData(imageData, 0, 0),
+    pget: (x, y) => {
+      const i = (x + y * w) * 4;
+      return [
+        imageData.data[i + 0],
+        imageData.data[i + 1],
+        imageData.data[i + 2],
+        imageData.data[i + 3]
+      ];
+    }
   }
 }
 
@@ -386,21 +396,25 @@ export const main = async () => {
   const b = await imageToMatrix(imgB);
 
 
-  // Training data
+  // Training data (with stochastic shuffling)
 
-  const [ ti, to ] = imageMatToTrainingPair(a);
+  const trainData = imageMatToTrainingData(a);
+
+  Mat.shuffleRows(trainData);
+
+  const [ ti, to ] = Mat.splitCols(trainData, [ 2, 1 ]);
 
 
   // Train Network
 
-  const net = NN.alloc([ 2, 7, 7, 1 ], true);
+  const net = NN.alloc([ 2, 7, 4, 7, 1 ], true);
 
   await train(net, ti, to, { 
     maxSteps: 20000,
     maxRank:  4,
     epochSize: 10,
-    rate: 15
-  }, imgA, 27, 27, 5);
+    rate: 5
+  }, imgA, 27, 27, 3);
 
 }
 

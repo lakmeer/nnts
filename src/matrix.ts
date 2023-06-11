@@ -1,5 +1,5 @@
 
-import { log, assert } from "./utils.ts";
+import { log, assert, floor } from "./utils.ts";
 import { AsciiTable3 } from "./_poly-import.ts";
 
 
@@ -156,6 +156,51 @@ export const eq = (a: Matrix, b: Matrix): boolean => {
     if (a.data[i] !== b.data[i]) return false;
   }
   return true;
+}
+
+
+//
+// Mutations
+//
+
+export const splitCols = (m: Matrix, colSpec: int[]): Array<Matrix> => {
+  const outputs = [];
+
+  for (let c in colSpec) {
+    outputs.push(alloc(m.rows, colSpec[c]));
+  }
+
+  for (let r = 0; r < m.rows; r++) {
+    let col = 0;
+    for (let c in colSpec) {
+      let colSize = colSpec[c];
+      for (let i = 0; i < colSize; i++) {
+        put(outputs[c], r, i, at(m, r, col + i));
+      }
+      col += colSize;
+    }
+  }
+
+  return outputs;
+}
+
+export const shuffleRows = (m: Matrix) => {
+
+  // More-or-less Fisher-Yates:
+  // For index i, pick a random index from the range [i, m.rows]
+  // Swap values at i and random index
+  // Increment i
+  // Repeat until i = m.rows
+
+  const temp = alloc(1, m.cols);
+
+  for (let i = 0; i < m.rows; i++) {
+    let j = i + floor(Math.random() * (m.rows - i));
+
+    temp.data.set(m.data.subarray(j * m.cols, (j + 1) * m.cols));
+    m.data.set(m.data.subarray(i * m.cols, (i + 1) * m.cols), j * m.cols);
+    m.data.set(temp.data, i * m.cols);
+  }
 }
 
 
