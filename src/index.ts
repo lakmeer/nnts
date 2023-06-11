@@ -34,10 +34,10 @@ const PREVIEW_MODE: "OUTPUT" | "DIFF" | "DEBUG" = "OUTPUT";
 
 export const train = async (net:NN, ti, to, options = {}, img, w, h, upSize = 2) => {
 
-  const maxSteps   = options.maxSteps  ?? 10000;
+  const maxEpochs  = options.maxEpochs ?? 10000;
   const maxRank    = options.maxRank   ?? 4;
   const rate       = options.rate      ?? 1;
-  const epochSize  = options.epochSize ?? 100;
+  const batchesPF  = options.batchesPF ?? 1;
   const aggression = options.aggression ?? 0;
   const jitter     = options.jitter    ?? 0;
 
@@ -54,12 +54,15 @@ export const train = async (net:NN, ti, to, options = {}, img, w, h, upSize = 2)
 
   const grad = NN.alloc(net.arch);
 
-  log.info(`Training for ${maxSteps} steps...`);
+  log.info(`Training for ${maxEpochs} epochs...`);
+
+
+  // State
 
   let c = 1;
   let rank = 0;
   let costHist = [];
-  let step = 0;
+  let epoch = 0;
   let state: TrainState = "TRAINING";
 
   const input   = newSurface(w, h, img);
@@ -68,29 +71,61 @@ export const train = async (net:NN, ti, to, options = {}, img, w, h, upSize = 2)
   const upscale = newSurface(w * upSize, h * upSize);
 
 
-  // Training loop
+  // Batching
+  //
+  // Full training set has been shuffled
+  // Starting at index 0, train on batchSize worth of rows
+  // Then increment batchStart and batchEnd by batchSize
+  // Repeat until batchEnd is greater than the number of rows
+  //  or until max batches per frame
+  // Next frame will resume from current batchStart
+  // If batchEnd is greater than the number of rows, reset to zeroth batch
+  // Epoch now will only increment this frame if we ran out of batches
 
-  const trainBatch = async () => {
+  const batchSize = 10;
+
+  let batchStart = 0;
+  let batchEnd   = batchSize;
+
+
+  // Training loop (one frame)
+
+  const trainFrame = async () => {
 
     // Scale learning rate as we progress
-    const a = limit(1, 10, 1/(c + 1 - aggression * (step/maxSteps)));
+    const a = limit(1, 10, 1/(c + 1 - aggression * (epoch/maxEpochs)));
     const r = rate/2 + rate/2 * a;
 
-    // Apply backpropagated gradient
-    for (let i = 0; i < epochSize; i++) {
+    let avgCost = 0;
 
-      NN.backprop(net, grad, 0, ti, to);
+    // Apply backpropagated gradient
+    for (let i = 0; i < batchesPF; i++) {
+      let size = batchSize;
+
+      if (batchStart + batchSize >= ti.rows) {
+        size = t.rows - bachStart; // last batch
+      }
+
+      const batch_ti = Mat.sub(ti, batchStart, 0, size, ti.cols);
+      const batch_to = Mat.sub(to, batchStart, 0, size, to.cols);
+
+      NN.backprop(net, grad, 0, batch_ti, batch_to);
       NN.learn(net, grad, r);
-      c = NN.cost(net, ti, to);
-      costHist.push(c);
+      avgCost += NN.cost(net, batch_ti, batch_to);
+
+      if (last) {
+        epoch += 1;
+      }
+
     }
 
-    // Review batch
-    step += epochSize;
+    costHist.push(c);
+
+    // Review frame
     rank = costRank(c);
 
-    if (step >= maxSteps) state = "STOPPED";
-    if (rank >= maxRank)  state = "FINISHED";
+    if (epoch >= maxEpochs) state = "STOPPED";
+    if (rank  >= maxRank)   state = "FINISHED";
 
 
     // Run inference and paint to canvas(es)
@@ -119,7 +154,7 @@ export const train = async (net:NN, ti, to, options = {}, img, w, h, upSize = 2)
     netToImg(net, output, w, h);
 
     // Only render upscale of factor n every nth epoch
-    if (step % (epochSize * upSize) === 0) {
+    if (epoch % upSize === 0) {
       netToImg(net, upscale, w, h, upSize);
     }
 
@@ -174,7 +209,7 @@ export const train = async (net:NN, ti, to, options = {}, img, w, h, upSize = 2)
         const tTime = ((performance.now() - start)/1000).toFixed(2);
         const tRank = costRank(c, true);
 
-        Screen.text(`Cost: ${tCost}  Rate: ${tRate}  Epoch: ${step}/${maxSteps}  ${tTime}s`, 10, 25, 'white', 22);
+        Screen.text(`Cost: ${tCost}  Rate: ${tRate}  Epoch: ${epoch}/${maxEpochs}  ${tTime}s`, 10, 25, 'white', 22);
         Screen.text(`${state} ${tRank}`, w - 160, 25, 'white', 22);
         Screen.text(`Set size: ${ti.rows}`, 10, size.h - 10, 'white', 22);
       });
@@ -183,7 +218,7 @@ export const train = async (net:NN, ti, to, options = {}, img, w, h, upSize = 2)
     // Stop if we're not improving
     if (state === "TRAINING") {
       await new Promise(requestAnimationFrame);
-      await trainBatch();
+      await trainFrame();
     }
 
     // Gym might be interested in the final gradient network
@@ -194,7 +229,7 @@ export const train = async (net:NN, ti, to, options = {}, img, w, h, upSize = 2)
   // Begin training
 
   const start = performance.now();
-  await trainBatch();
+  await trainFrame();
   const time = performance.now() - start;
 
   if (rank < maxRank) {
@@ -410,9 +445,9 @@ export const main = async () => {
   const net = NN.alloc([ 2, 7, 4, 7, 1 ], true);
 
   await train(net, ti, to, { 
-    maxSteps: 20000,
+    maxEpochs: 20000,
     maxRank:  4,
-    epochSize: 10,
+    batchSize: 10,
     rate: 5
   }, imgA, 27, 27, 3);
 
