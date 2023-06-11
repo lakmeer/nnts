@@ -67,10 +67,12 @@ export const table = (headers:Array<string>, rows:Array<Array<any>>):string => {
 
 // Colors
 
+export const WHITE   = [ 255,  255,  255 ];
 export const ORANGE  = [ 245,  147,  34  ];
 export const NEUTRAL = [ 232,  234,  235 ];
 export const BLUE    = [ 8,    119,  189 ];
 export const DARK    = [ 33,   33,   33  ];
+export const BLACK   = [ 0,    0,    0   ];
 
 export const colorLerp = (a:number[], b:number[], t:number):string =>
   [ lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t) ];

@@ -32,7 +32,7 @@ const log = logHelper("IMG");
 
 const PREVIEW_MODE: "OUTPUT" | "DIFF" | "DEBUG" = "OUTPUT";
 
-export const train = async (net:NN, ti, to, options = {}, img, w, h) => {
+export const train = async (net:NN, ti, to, options = {}, img, w, h, upSize = 2) => {
 
   const maxSteps   = options.maxSteps  ?? 10000;
   const maxRank    = options.maxRank   ?? 4;
@@ -61,8 +61,6 @@ export const train = async (net:NN, ti, to, options = {}, img, w, h) => {
   let costHist = [];
   let step = 0;
   let state: TrainState = "TRAINING";
-
-  const upSize = 2;
 
   const input   = newSurface(w, h, img);
   const diff    = newSurface(w, h);
@@ -116,9 +114,13 @@ export const train = async (net:NN, ti, to, options = {}, img, w, h) => {
     output.update();
     diff.update();
 
-    // Render net at various sizes
+    // Render net
     netToImg(net, output, w, h);
-    netToImg(net, upscale, w, h, upSize);
+
+    // Only render upscale of factor n every nth epoch
+    if (step % (epochSize * upSize) === 0) {
+      netToImg(net, upscale, w, h, upSize);
+    }
 
     // Draw new frame
     Screen.all((ctx, { w, h }) => {
@@ -342,12 +344,7 @@ const newSurface = (w:number, h:number, img?):Surface => {
   canvas.height = h;
 
   const ctx = canvas.getContext('2d');
-
-  ctx.fillStyle = 'magenta';
-  ctx.fillRect(0, 0, w/2, h/2);
-
   if (img) ctx.drawImage(img, 0, 0);
-
   const imageData = ctx.getImageData(0, 0, w, h);
 
   const pset = (x, y, c) => {
@@ -396,14 +393,14 @@ export const main = async () => {
 
   // Train Network
 
-  const net = NN.alloc([ 2, 9, 6, 1 ], true);
+  const net = NN.alloc([ 2, 7, 7, 1 ], true);
 
   await train(net, ti, to, { 
-    maxSteps: 10000,
-    maxRank:  3,
-    epochSize: 20,
-    rate: 3
-  }, imgA, 27, 27);
+    maxSteps: 20000,
+    maxRank:  4,
+    epochSize: 10,
+    rate: 15
+  }, imgA, 27, 27, 5);
 
 }
 
