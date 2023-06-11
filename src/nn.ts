@@ -122,6 +122,11 @@ export const forward = (net:Net) => {
   }
 }
 
+export const predict = (net:Net, ti:Matrix) => {
+  Mat.copy(net.as[0], ti);
+  forward(net);
+  return net.as[net.count];
+}
 
 
 //
@@ -175,7 +180,7 @@ export const finite_diff = (net:Net, grad:Net, eps:float, ti:Matrix, to:Matrix) 
   }
 }
 
-export const backprop = (net:Net, grad:Net, eps:float, ti:Matrix, to:Matrix) => {
+export const backprop = (net:Net, grad:Net, jit:float, ti:Matrix, to:Matrix) => {
   const n = ti.rows;
 
   // i = current sample

@@ -9,74 +9,45 @@
 // This is just to scratch my own itch, do not use lol.
 //
 
+import { weightColor, logHelper, limit, costRank, rgb, abs, max } from './utils';
 
-// Custom imports
-
-import { limit, unbend, abs, pad, last, costRank, weightColor, logHelper, sigmoid, red, green, table, floor, max, min, rgb, colorLerp } from "./utils.ts";
 import * as Screen from './canvas';
+import * as Mat from './matrix';
+import * as NN from './nn';
 
-const log = logHelper("GYM");
+type TrainState =
+  | "IDLE"
+  | "TRAINING"
+  | "CANCELLED"
+  | "STALLED"
+  | "STOPPED"
+  | "FINISHED";
 
-
-// NN Implementation
-
-import * as NN from  "./nn.ts";
-import * as Mat from "./matrix.ts";
-import type { Net } from "./nn.ts";
-import type { Matrix } from "./matrix.ts";
-
-
-//
-// Training report formatter
-//
-
-type ReportRow = [ boolean, ...string[] ];
-type ReportRowFormatter = (inputs:Matrix, expect:Matrix, actual:Matrix) => ReportRow;
-
-const report = (net:Net, ti: Matrix, to:Matrix, inputCols:string[], formatRow:ReportRowFormatter):boolean => {
-  const input  = net.as[0];
-  const output = net.as[net.count];
-  const c = NN.cost(net, ti, to);
-
-  log.info(`Final Cost:`, c);
-
-  const rows = [];
-  let pass = true;
-
-  for (let ix = 0; ix < to.rows; ix++) {
-    Mat.copy(input, Mat.row(ti, ix));
-    NN.forward(net);
-
-    const row = formatRow(input, Mat.row(to, ix), Mat.row(output, 0));
-    pass = pass && row[0];
-    const ok = row.shift() ? green("OK") : red("XX");
-    rows.push([ ok, ...row ]);
-  }
-
-  const headers = [ 'OK' ].concat(inputCols).concat([ 'exp', 'act' ]);
-
-  if (!pass) {
-    console.log(table(headers, rows));
-    log.red("⚠️  Failed to converge");
-  }
-  return pass;
-}
+const log = logHelper("IMG");
 
 
-//
 //
 // Training Loop
 //
 
-export const train = async (net:NN, ti, to, options = {}) => {
+const PREVIEW_MODE: "OUTPUT" | "DIFF" | "DEBUG" = "OUTPUT";
 
-  const maxSteps  = options.maxSteps  ?? 10000;
-  const maxRank   = options.maxRank   ?? 4;
-  const rate      = options.rate      ?? 1;
-  const batchSize = options.batchSize ?? 100;
+export const train = async (net:NN, ti, to, options = {}, img, w, h) => {
+
+  const maxSteps   = options.maxSteps  ?? 10000;
+  const maxRank    = options.maxRank   ?? 4;
+  const rate       = options.rate      ?? 1;
+  const epochSize  = options.epochSize ?? 100;
   const aggression = options.aggression ?? 0;
+  const jitter     = options.jitter    ?? 0;
+
+  const maxWindow = 100;
 
   Screen.setAspect(1);
+
+
+  const cancel = () => state = "CANCELLED";
+  document.addEventListener('keydown', cancel);
 
 
   // Prepare Gradient Network
@@ -86,67 +57,128 @@ export const train = async (net:NN, ti, to, options = {}) => {
   log.info(`Training for ${maxSteps} steps...`);
 
   let c = 1;
+  let rank = 0;
   let costHist = [];
   let step = 0;
+  let state: TrainState = "TRAINING";
 
-  //let g = 0;
-  //let gradHist = [];
+  const upSize = 2;
+
+  const input   = newSurface(w, h, img);
+  const diff    = newSurface(w, h);
+  const output  = newSurface(w, h, img);
+  const upscale = newSurface(w * upSize, h * upSize);
 
 
   // Training loop
 
   const trainBatch = async () => {
 
-    //const r = rate;
+    // Scale learning rate as we progress
     const a = limit(1, 10, 1/(c + 1 - aggression * (step/maxSteps)));
-    const r = rate/2 + rate/2 * a; // scale learning rate as cost drops
+    const r = rate/2 + rate/2 * a;
 
     // Apply backpropagated gradient
-    for (let i = 0; i < batchSize; i++) {
+    for (let i = 0; i < epochSize; i++) {
       NN.backprop(net, grad, 0, ti, to);
       NN.learn(net, grad, r);
+      c = NN.cost(net, ti, to);
+      costHist.push(c);
     }
 
     // Review batch
-    step += batchSize;
-    c = NN.cost(net, ti, to);
-    costHist.push(c);
+    step += epochSize;
+    rank = costRank(c);
 
-    // "Gradient velocity"
-    //NN.forward(grad);
-    //g =  grad.ws.reduce((sum, mat) => mat.data.reduce((sum, v) => sum + abs(v), sum), 0);
-    //g += grad.bs.reduce((sum, mat) => mat.data.reduce((sum, v) => sum + abs(v), sum), 0);
-    //g += grad.as.reduce((sum, mat) => mat.data.reduce((sum, v) => sum + abs(v), sum), 0);
-    //gradHist.push(abs(nc - c));
+    if (step >= maxSteps) state = "STOPPED";
+    if (rank >= maxRank)  state = "FINISHED";
 
-    const running = step < maxSteps && costRank(c) <= maxRank;
+
+    // Run inference and paint to canvas(es)
+
+    for (let x = 0; x < w; x++) {
+      for (let y = 0; y < h; y++) {
+        Mat.put(net.as[0], 0, 0, x/w);
+        Mat.put(net.as[0], 0, 1, y/h);
+
+        NN.forward(net);
+
+        const i = (x + y * h);
+        const b = abs(Mat.at(net.as[net.count], 0, 0));
+        const expect = Mat.at(to, i, 0);
+
+        output.vset(x, y, [ b, b, b ]);
+        diff.pset(x, y, weightColor(b - expect, 1, true));
+      }
+    }
+
+    // Commit pixels to surface
+    output.update();
+    diff.update();
+
+    // Render net at various sizes
+    netToImg(net, output, w, h);
+    netToImg(net, upscale, w, h, upSize);
 
     // Draw new frame
     Screen.all((ctx, { w, h }) => {
-
       Screen.clear();
 
-      Screen.grid('grey',  0, 0, w, h, 16);
-      //Screen.grid('white', 0, 0, w, h, 2);
+      Screen.grid('grey', 0, 0, w, h, 8);
 
-      Screen.zone(0, h/4, w, h*3/4, (ctx, size) => {
+      // Network diagram
+      Screen.zone(0, h/4, w*3/4, h*3/4, (ctx, size) => {
         Screen.pad(size, 0.9, (ctx, size) => {
-          Screen.drawNetwork(grad, size, 1.2, 10000, true);
-          Screen.drawNetwork(net,  size, 1,   10);
+          Screen.drawNetwork(grad, size, 1.2, 10, true);
+          Screen.drawNetwork(net,  size, 1,   1);
         });
       });
 
-      Screen.zone(0, 0, w, h/4, (ctx, size) => {
-        //Screen.plotSeriesLog(gradHist, size, 'limegreen');
-        Screen.plotSeriesLog(costHist, size, '#ff3355');
+      // Input image
+      Screen.zone(w*3/4, h*0/4, w/4, h/4, (ctx, size) => {
+        Screen.pad(size, 0.9, (ctx, size) => {
+          Screen.image(input.canvas, size);
+        });
       });
 
-      Screen.text(`Cost: ${c.toFixed(7)}  Rate: ${r.toFixed(4)}  Step: ${step}/${maxSteps}`, 10, 25, 'white', 22);
-      Screen.text(`${running ? 'TRAINING' : 'FINISHED' } ${costRank(c, true)}`, w - 160, 25, 'white', 22);
+      // Diff image
+      Screen.zone(w*3/4, h*1/4, w/4, h/4, (ctx, size) => {
+        Screen.pad(size, 0.9, (ctx, size) => {
+          Screen.image(diff.canvas, size);
+        });
+      });
+
+      // Output image
+      Screen.zone(w*3/4, h*2/4, w/4, h/4, (ctx, size) => {
+        Screen.pad(size, 0.9, (ctx, size) => {
+          Screen.image(output.canvas, size);
+        });
+      });
+
+      // Upscale preview
+      Screen.zone(w*3/4, h*3/4, w/4, h/4, (ctx, size) => {
+        Screen.pad(size, 0.9, (ctx, size) => {
+          Screen.image(upscale.canvas, size);
+        });
+      });
+
+      // Cost history plot
+      Screen.zone(0, 0, w*3/4, h/4, (ctx, size) => {
+        Screen.plotSeries(costHist, size, options.color ?? '#ff2266', true);
+
+        const tCost = c.toFixed(maxRank - 1);
+        const tRate = r.toFixed(2);
+        const tTime = ((performance.now() - start)/1000).toFixed(2);
+        const tRank = costRank(c, true);
+
+        Screen.text(`Cost: ${tCost}  Rate: ${tRate}  Epoch: ${step}/${maxSteps}  ${tTime}s`, 10, 25, 'white', 22);
+        Screen.text(`${state} ${tRank}`, w - 160, 25, 'white', 22);
+        Screen.text(`Set size: ${ti.rows}`, 10, size.h - 10, 'white', 22);
+      });
     });
 
     // Stop if we're not improving
-    if (running) {
+    if (state === "TRAINING") {
       await new Promise(requestAnimationFrame);
       await trainBatch();
     }
@@ -161,7 +193,6 @@ export const train = async (net:NN, ti, to, options = {}) => {
   const start = performance.now();
   await trainBatch();
   const time = performance.now() - start;
-  const rank = costRank(c);
 
   if (rank < maxRank) {
     log.err(`Stopping at rank ${rank} after ${step} steps.`);
@@ -169,108 +200,214 @@ export const train = async (net:NN, ti, to, options = {}) => {
     log.ok(`Finished in ${time.toFixed(2)}ms and ${step} steps`);
   }
 
+  document.removeEventListener('keydown', cancel);
 }
 
 
+
 //
-// Examples
+// Helpers
 //
 
-export const xor = async () => {
+const loadImage = (src:string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  })
 
-  log.blue("Running XOR Example");
+const imageToMatrix = (img:HTMLImageElement) => {
+  const canvas = document.createElement('canvas');
+  canvas.width  = img.width;
+  canvas.height = img.height;
+  canvas.style.top = 0;
+  canvas.style.zIndex = '1000';
+  canvas.style.position = 'absolute';
 
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0);
 
-  // XOR Training data
+  const data = ctx.getImageData(0, 0, img.width, img.height).data;
+  const mat  = Mat.alloc(img.width - 1, img.height - 1);
 
-  const ti = Mat.create(4, 2, [ 0, 0,    0, 1,    1, 0,    1, 1   ]);
-  const to = Mat.create(4, 1, [       1,       0,       0,      1 ]);
+  const perceptualWeights = [0.2126, 0.7152, 0.0722];
 
-
-  // Train XOR Network
-
-  const xor = NN.alloc([ 2, 2, 1 ], true);
-
-  await train(xor, ti, to, { rate: 0.5 });
-
-
-  // Report
-
-  report(xor, ti, to, [ 'a', 'b' ], (inputs, expect, actual) => {
-    return [
-      Mat.smush(expect, 0) == Mat.smush(actual, 0),
-      Mat.at(inputs, 0, 0).toString(),
-      Mat.at(inputs, 0, 1).toString(),
-      Mat.smush(expect, 0),
-      Mat.smush(actual, 0)
-    ]
-  });
-}
-
-
-const adder = async (BITS:number) => {
-
-  // Generate training data
-
-  const n = (1<<BITS);
-  const rows = n*n;
-  const ti = Mat.alloc(rows, BITS*2);
-  const to = Mat.alloc(rows, BITS+1);
-
-  for (let i = 0; i < ti.rows; i++) {
-    let x = i/n | 0;
-    let y = i%n | 0;
-    let z = x + y;
-
-    for (let j = 0; j < BITS; j++) {
-      Mat.put(ti, i, j,      (x >> j) & 1);
-      Mat.put(ti, i, j+BITS, (y >> j) & 1);
-      Mat.put(to, i, j,      (z >> j) & 1);
+  for (let x = 0; x < img.width - 1; x++) {
+    for (let y = 0; y < img.height - 1; y++) {
+      const i = (x + y * img.width) * 4;
+      const r = data[i + 0] * perceptualWeights[0];
+      const g = data[i + 1] * perceptualWeights[1];
+      const b = data[i + 2] * perceptualWeights[2];
+      const v = (r + g + b) / 255;
+      Mat.put(mat, y, x, v);
     }
-    Mat.put(to, i, BITS, z >= n ? 1 : 0);
   }
 
 
-  // Train network
-
-
-  const net = NN.alloc([ BITS*2, 4*BITS, 3*BITS, BITS+1 ], true);
-
-  await train(net, ti, to, {
-    maxSteps:  10000,
-    maxRank:   3,
-    rate:      5,
-    batchSize: 10,
-    offset:    0.0,
-    color: 'limegreen',
-    aggression: 0.0
-  });
-
-
-  // Report
-
-  report(net, ti, to, [ 'x', 'y' ], (inputs, expect, actual) => {
-    const x = Mat.smush(Mat.sub(inputs, 0, 0, BITS, 1), 0);
-    const y = Mat.smush(Mat.sub(inputs, 0, BITS, BITS, 1), 0);
-    const exp = Mat.smush(expect, 0);
-    const act = Mat.smush(actual, 0);
-    const ok = exp == act;
-    return [ ok, x, y, exp, act ];
-  });
-
-  return net;
+  return mat;
 }
 
+const netToImg = (net:Network, surface:Surface, w:number, h:number, z = 1) => {
+  w = w * z;
+  h = h * z;
+
+  for (let x = 0; x < w; x += 1) {
+    for (let y = 0; y < h; y += 1) {
+      Mat.put(net.as[0], 0, 0, x/w);
+      Mat.put(net.as[0], 0, 1, y/h);
+
+      NN.forward(net);
+
+      const b = Mat.get(net.as[net.count], 0, 0);
+      surface.data[(x + y * w) * 4 + 0] = b * 255;
+      surface.data[(x + y * w) * 4 + 1] = b * 255;
+      surface.data[(x + y * w) * 4 + 2] = b * 255;
+      surface.vset(x, y, [ b, b, b ]);
+    }
+  }
+
+  surface.update();
+  return surface;
+}
+
+const imageMatToTrainingPair = (a:Mat) => {
+  const ti = Mat.alloc(a.rows * a.cols, 2);
+  const to = Mat.alloc(a.rows * a.cols, 1);
+
+  for (let x = 0; x < a.cols; x += 1) {
+    for (let y = 0; y < a.rows; y += 1) {
+      const row = x + y * a.rows;
+      Mat.put(ti, row, 0, x/a.rows);
+      Mat.put(ti, row, 1, y/a.cols);
+      Mat.put(to, row, 0, Mat.get(a, y, x));
+    }
+  }
+
+  return [ ti, to ];
+}
+
+const all = document.createElement('div');
+all.style.position = 'absolute';
+all.style.bottom = 0;
+all.style.display = "flex";
+all.style.alignItems = "flex-end";
+document.body.appendChild(all);
+
+const viewMatrix = (mat:Mat, s = 10, mask = [1,1,1]) => {
+
+  const div = document.createElement('div');
+  div.style.display = 'grid';
+  div.style.gridTemplateColumns = `repeat(${mat.cols}, ${s}px)`;
+  div.style.border = `2px solid ${rgb(mask.map(x => x * 255))}`;
+  div.style.margin = `10px`;
+
+  for (let x = 0; x < mat.cols; x += 1) {
+    for (let y = 0; y < mat.rows; y += 1) {
+      const b = Mat.at(mat, x, y) * 255;
+      let p = document.createElement('div');
+      p.style.backgroundColor = rgb([b *mask[0], b *mask[1], b *mask[2]]);
+      p.style.width  = s + 'px';
+      p.style.height = s + 'px';
+      div.appendChild(p);
+    }
+  }
+
+  all.appendChild(div);
+}
+
+const onTop = (el, scale = 1) => {
+  el.style.position = 'fixed';
+  el.style.bottom = 0;
+  el.style.left = 0;
+  el.style.zIndex = '1000';
+  el.style.backgroundColor = 'black';
+  el.style.transform = `scale(${scale})`;
+  el.style.transformOrigin = 'bottom left';
+  document.body.appendChild(el);
+}
+
+type Surface = {
+  canvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D,
+  data: Uint8ClampedArray,
+  update: () => void,
+  pset: (x:number, y:number, c:[number, number, number, number?]) => void,
+  vset: (x:number, y:number, c:[number, number, number]) => void,
+}
+
+const newSurface = (w:number, h:number, img?):Surface => {
+  const canvas = document.createElement('canvas');
+  canvas.width  = w;
+  canvas.height = h;
+
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = 'magenta';
+  ctx.fillRect(0, 0, w/2, h/2);
+
+  if (img) ctx.drawImage(img, 0, 0);
+
+  const imageData = ctx.getImageData(0, 0, w, h);
+
+  const pset = (x, y, c) => {
+    imageData.data[(x + y * w) * 4 + 0] = c[0];
+    imageData.data[(x + y * w) * 4 + 1] = c[1];
+    imageData.data[(x + y * w) * 4 + 2] = c[2];
+    imageData.data[(x + y * w) * 4 + 3] = c[3] ?? 255;
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  const vset = (x, y, v) => {
+    pset(x, y, v.map(n => n * 255));
+  }
+
+  return {
+    canvas,
+    pset,
+    vset,
+    data: imageData.data,
+    update: () => ctx.putImageData(imageData, 0, 0),
+  }
+}
 
 
 //
 // Main
 //
 
-export const main = () => {
-  //xor();
-  adder(4);
+export const main = async () => {
+
+  console.clear();
+
+  log.blue("Running MNIST Example");
+
+  const imgA = await loadImage('/6.png');
+  const a = imageToMatrix(imgA);
+
+  const imgB = await loadImage('/9.png');
+  const b = await imageToMatrix(imgB);
+
+
+  // Training data
+
+  const [ ti, to ] = imageMatToTrainingPair(a);
+
+
+  // Train Network
+
+  const net = NN.alloc([ 2, 9, 6, 1 ], true);
+
+  await train(net, ti, to, { 
+    maxSteps: 10000,
+    maxRank:  3,
+    epochSize: 20,
+    rate: 3
+  }, imgA, 27, 27);
+
 }
 
+
 main();
+
 

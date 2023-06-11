@@ -26,7 +26,7 @@ export const alloc = (rows: int, cols: int, rand = false): Matrix => {
   const mem = new Float32Array(rows * cols);
   if (rand) {
     for (let i = 0; i < rows * cols; i++) {
-      mem[i] = Math.random();
+      mem[i] = Math.random() * 2 - 1;
     }
   }
   return { rows, cols, data: mem };

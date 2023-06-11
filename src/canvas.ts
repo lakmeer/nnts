@@ -69,8 +69,8 @@ export const clear = (x = 0, y = 0, w = size.w, h = size.h) => {
   ctx.fillRect(x, y, w, h);
 }
 
-export const line = (c, x1, y1, x2, y2, w = 2) => {
-  ctx.lineWidth = w;
+export const line = (c, x1, y1, x2, y2, w = 1) => {
+  ctx.lineWidth = 2 * w;
   ctx.strokeStyle = c;
   ctx.beginPath();
   ctx.moveTo(x1, y1);
@@ -119,6 +119,10 @@ export const text = (text, x, y, c, size) => {
   ctx.fillText(text, x, y);
 }
 
+export const image = (img, size, x = 0, y = 0) => {
+  ctx.drawImage(img, x, y, size.w, size.h);
+}
+
 
 //
 // Specialised Drawing API
@@ -148,11 +152,10 @@ export const drawNetwork = (net:Net, { w, h }, radiusScale = 1, weightScale = 1,
     const x = xStride/2 + layer * xStride;
     const c = `hsl(${ 360/numLayers * layer }, 100%, 50%)`;
 
-    // Each neuron in layer
+    // Draw connections to next layer
     for (let i = 0; i < numNeurons; i++) {
       const y = yStride/2 + i * yStride;
 
-      // Draw connections to next layer
       if (layer < numLayers - 1) {
         const nextNumNeurons = net.arch[layer+1];
         const nextYStride = h/nextNumNeurons;
@@ -163,8 +166,12 @@ export const drawNetwork = (net:Net, { w, h }, radiusScale = 1, weightScale = 1,
           line(rgb(color(w, weightScale)), x, y, x+xStride, nextY, radiusScale*radiusScale);
         }
       }
+    }
 
-      // Draw neuron
+    // Draw neurons
+    for (let i = 0; i < numNeurons; i++) {
+      const y = yStride/2 + i * yStride;
+
       const b = layer == 0 ? 0 : Mat.at(net.bs[layer-1], 0, i);
       circle(rgb(color(b, weightScale)), x, y, r * radiusScale);
     }
@@ -175,19 +182,58 @@ export const drawNetwork = (net:Net, { w, h }, radiusScale = 1, weightScale = 1,
 // Time Series Plot
 // - expectedY - maximum expected value of data points in the series
 
-export const plotSeriesLog = (data, { w, h }, color) => {
+export const plotSeries = (data, { w, h }, color, fill = false) => {
   const xStep = w/data.length;
   const maxY =  Math.max(...data);
+
+  ctx.setLineDash([15, 15]);
+  line('white', 0, h - 1/maxY * h, w, h - 1/maxY * h, 1/2);
+  ctx.setLineDash([]);
+
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  ctx.lineTo(0, h - h * data[0]/maxY);
 
   for (let i = 0; i < data.length - 1; i++) {
     const x1 = i * xStep;
     const y1 = h - h * data[i]/maxY;
-    const x2 = (i+1) * xStep;
-    const y2 = h - h * data[i+1]/maxY;
-    line(color, x1, y1, x2, y2, 2);
+    ctx.lineTo(x1, y1);
+
+    if (i == data.length - 2) {
+      ctx.lineTo(w, y1);
+    }
   }
 
+  if (fill) {
+    ctx.globalAlpha = 0.1;
+    ctx.fillStyle = color;
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
+    ctx.fill();
+  }
+
+  ctx.globalAlpha = 1.0;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
   line('white', 0, h, w, h, 1);
+}
+
+export const fillSeries = (data, { w, h }, color) => {
+  const xStep = w/data.length;
+  const maxY =  Math.max(...data);
+
+  ctx.beginPath();
+
+
+  for (let i = 0; i < data.length - 1; i++) {
+    const x1 = i * xStep;
+    const y1 = h - h * data[i]/maxY;
+    //const x2 = (i+1) * xStep;
+    //const y2 = h - h * data[i+1]/maxY;
+    ctx.lineTo(x1, y1);
+  }
 }
 
 

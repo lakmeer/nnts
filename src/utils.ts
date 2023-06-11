@@ -77,14 +77,15 @@ export const colorLerp = (a:number[], b:number[], t:number):string =>
 
 export const rgb = (c:number[]):string => `rgb(${c.join(',')})`;
 
-export const weightColor = (w:number, z:number) => {
+export const weightColor = (w:number, z = 1, dark = false) => {
   const s = sigmoid(w*z)*2 - 1;
+  const midColor = dark ? DARK : NEUTRAL;
   return w < 0
-    ? colorLerp(NEUTRAL, ORANGE, -s)
-    : colorLerp(NEUTRAL, BLUE,    s);
+    ? colorLerp(midColor, ORANGE, -s)
+    : colorLerp(midColor, BLUE,    s);
 }
 
-export const plainColor = (w:number, z:number) => {
+export const plainColor = (w:number, z = 1) => {
   const s = sigmoid(w*z)*2 - 1;
   return colorLerp(DARK, NEUTRAL, 1 - (1 - s)*(1 - s));
 }
