@@ -32,14 +32,15 @@ const log = logHelper("IMG");
 
 const PREVIEW_MODE: "OUTPUT" | "DIFF" | "DEBUG" = "OUTPUT";
 
-export const train = async (net:NN, trainingSet, options = {}, img, w, h, upSize = 2) => {
+export const train = async (net:NN, trainingSet, options = {}, img, w, h) => {
 
-  const maxEpochs  = options.maxEpochs ?? 10000;
-  const maxRank    = options.maxRank   ?? 4;
-  const rate       = options.rate      ?? 1;
-  const batchesPF  = options.batchesPF ?? 1;
+  const maxEpochs  = options.maxEpochs  ?? 10000;
+  const maxRank    = options.maxRank    ?? 4;
+  const rate       = options.rate       ?? 1;
+  const batchesPF  = options.batchesPF  ?? 1;
   const aggression = options.aggression ?? 0;
-  const jitter     = options.jitter    ?? 0;
+  const jitter     = options.jitter     ?? 0;
+  const upSize     = options.upSize     ?? 1;
 
   const maxWindow = 100;
 
@@ -118,8 +119,6 @@ export const train = async (net:NN, trainingSet, options = {}, img, w, h, upSize
       batchStart += size;
 
       if (batchStart >= trainingSet.rows) {
-        console.log("Next epoch");
-
         epoch += 1;
         batchStart = 0;
         c = avgCost / batchesPF;
@@ -167,7 +166,7 @@ export const train = async (net:NN, trainingSet, options = {}, img, w, h, upSize
     netToImg(net, output, w, h);
 
     // Only render upscale of factor n every nth epoch
-    if (epoch % upSize === 0) {
+    if ((epoch % upSize) === 0) {
       netToImg(net, upscale, w, h, upSize);
     }
 
@@ -401,7 +400,6 @@ const newSurface = (w:number, h:number, img?):Surface => {
     imageData.data[(x + y * w) * 4 + 1] = c[1];
     imageData.data[(x + y * w) * 4 + 2] = c[2];
     imageData.data[(x + y * w) * 4 + 3] = c[3] ?? 255;
-    ctx.putImageData(imageData, 0, 0);
   }
 
   const vset = (x, y, v) => {
@@ -451,15 +449,16 @@ export const main = async () => {
 
   // Train Network
 
-  const net = NN.alloc([ 2, 7, 4, 7, 1 ], true);
+  const net = NN.alloc([ 2, 7, 7, 7, 1 ], true);
 
   await train(net, trainData, { 
     maxEpochs: 20000,
     maxRank:  4,
-    batchSize: 10,
-    batchesPF: 10,
-    rate: 1
-  }, imgA, 27, 27, 1);
+    batchSize: 100,
+    batchesPF: 100,
+    rate: 1,
+    upSize: 5,
+  }, imgA, 27, 27);
 
 }
 
