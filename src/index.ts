@@ -32,7 +32,7 @@ const log = logHelper("IMG");
 
 const PREVIEW_MODE: "OUTPUT" | "DIFF" | "DEBUG" = "OUTPUT";
 
-export const train = async (net:NN, ti, to, options = {}, img, w, h, upSize = 2) => {
+export const train = async (net:NN, trainingSet, options = {}, img, w, h, upSize = 2) => {
 
   const maxEpochs  = options.maxEpochs ?? 10000;
   const maxRank    = options.maxRank   ?? 4;
@@ -75,8 +75,8 @@ export const train = async (net:NN, ti, to, options = {}, img, w, h, upSize = 2)
   //
   // Full training set has been shuffled
   // Starting at index 0, train on batchSize worth of rows
-  // Then increment batchStart and batchEnd by batchSize
-  // Repeat until batchEnd is greater than the number of rows
+  // Then increment batchStart by batchSize
+  // Repeat until batchStart + batchSize is greater than the number of rows
   //  or until max batches per frame
   // Next frame will resume from current batchStart
   // If batchEnd is greater than the number of rows, reset to zeroth batch
@@ -87,6 +87,7 @@ export const train = async (net:NN, ti, to, options = {}, img, w, h, upSize = 2)
   let batchStart = 0;
   let batchEnd   = batchSize;
 
+  let avgCost = 0;
 
   // Training loop (one frame)
 
@@ -96,37 +97,49 @@ export const train = async (net:NN, ti, to, options = {}, img, w, h, upSize = 2)
     const a = limit(1, 10, 1/(c + 1 - aggression * (epoch/maxEpochs)));
     const r = rate/2 + rate/2 * a;
 
-    let avgCost = 0;
+    Mat.shuffleRows(trainingSet);
 
-    // Apply backpropagated gradient
+    // Apply backpropagated gradient in batches
     for (let i = 0; i < batchesPF; i++) {
+
       let size = batchSize;
 
-      if (batchStart + batchSize >= ti.rows) {
-        size = t.rows - bachStart; // last batch
+      if (batchStart + batchSize >= trainingSet.rows) {
+        size = trainingSet.rows - batchStart;
       }
 
-      const batch_ti = Mat.sub(ti, batchStart, 0, size, ti.cols);
-      const batch_to = Mat.sub(to, batchStart, 0, size, to.cols);
+      const batch_ti = Mat.sub(trainingSet, batchStart, 0, size, 2);
+      const batch_to = Mat.sub(trainingSet, batchStart, 2, size, 1);
 
       NN.backprop(net, grad, 0, batch_ti, batch_to);
       NN.learn(net, grad, r);
       avgCost += NN.cost(net, batch_ti, batch_to);
 
-      if (last) {
+      batchStart += size;
+
+      if (batchStart >= trainingSet.rows) {
+        console.log("Next epoch");
+
         epoch += 1;
+        batchStart = 0;
+        c = avgCost / batchesPF;
+        costHist.push(c);
+        avgCost = 0;
       }
-
     }
-
-    costHist.push(c);
 
     // Review frame
     rank = costRank(c);
 
-    if (epoch >= maxEpochs) state = "STOPPED";
-    if (rank  >= maxRank)   state = "FINISHED";
+    if (epoch >= maxEpochs) {
+      log.err("Stopping: Max epochs reached");
+      state = "STOPPED";
+    }
 
+    if (rank  >= maxRank) {
+      log.err("Finished: Cost rank goal reached -", rank, costRank(c, true));
+      state = "FINISHED";
+    }
 
     // Run inference and paint to canvas(es)
 
@@ -211,7 +224,7 @@ export const train = async (net:NN, ti, to, options = {}, img, w, h, upSize = 2)
 
         Screen.text(`Cost: ${tCost}  Rate: ${tRate}  Epoch: ${epoch}/${maxEpochs}  ${tTime}s`, 10, 25, 'white', 22);
         Screen.text(`${state} ${tRank}`, w - 160, 25, 'white', 22);
-        Screen.text(`Set size: ${ti.rows}`, 10, size.h - 10, 'white', 22);
+        Screen.text(`Set size: ${trainingSet.rows}`, 10, size.h - 10, 'white', 22);
       });
     });
 
@@ -233,9 +246,9 @@ export const train = async (net:NN, ti, to, options = {}, img, w, h, upSize = 2)
   const time = performance.now() - start;
 
   if (rank < maxRank) {
-    log.err(`Stopping at rank ${rank} after ${step} steps.`);
+    log.err(`Stopping at rank ${rank} after ${epoch} epochs.`);
   } else {
-    log.ok(`Finished in ${time.toFixed(2)}ms and ${step} steps`);
+    log.ok(`Finished in ${time.toFixed(2)}ms and ${epoch} epochs`);
   }
 
   document.removeEventListener('keydown', cancel);
@@ -310,18 +323,18 @@ const netToImg = (net:Network, surface:Surface, w:number, h:number, z = 1) => {
 }
 
 const imageMatToTrainingData = (a:Mat) => {
-  const ti = Mat.alloc(a.rows * a.cols, 3);
+  const mat = Mat.alloc(a.rows * a.cols, 3);
 
   for (let x = 0; x < a.cols; x += 1) {
     for (let y = 0; y < a.rows; y += 1) {
       const row = x + y * a.rows;
-      Mat.put(ti, row, 0, x/a.rows);
-      Mat.put(ti, row, 1, y/a.cols);
-      Mat.put(ti, row, 2, Mat.get(a, y, x));
+      Mat.put(mat, row, 0, x/a.rows);
+      Mat.put(mat, row, 1, y/a.cols);
+      Mat.put(mat, row, 2, Mat.get(a, y, x));
     }
   }
 
-  return ti;
+  return mat;
 }
 
 const all = document.createElement('div');
@@ -435,21 +448,18 @@ export const main = async () => {
 
   const trainData = imageMatToTrainingData(a);
 
-  Mat.shuffleRows(trainData);
-
-  const [ ti, to ] = Mat.splitCols(trainData, [ 2, 1 ]);
-
 
   // Train Network
 
   const net = NN.alloc([ 2, 7, 4, 7, 1 ], true);
 
-  await train(net, ti, to, { 
+  await train(net, trainData, { 
     maxEpochs: 20000,
     maxRank:  4,
     batchSize: 10,
-    rate: 5
-  }, imgA, 27, 27, 3);
+    batchesPF: 10,
+    rate: 1
+  }, imgA, 27, 27, 1);
 
 }
 
