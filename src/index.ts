@@ -54,17 +54,17 @@ export const train = async (net:NN, trainingSet, options = {}, imgA, imgB, w, h)
   // State
 
   let c = 1;
-  let rank = 0;
   let costHist = [];
+  let rank = 0;
   let epoch = 0;
+  let frame = 0;
+
   let state: TrainState = "TRAINING";
 
   const inputA  = newSurface(w, h, imgA);
   const inputB  = newSurface(w, h, imgB);
-  //const diff    = newSurface(w, h);
   const outputA = newSurface(w, h);
   const outputB = newSurface(w, h);
-  const outputC = newSurface(w, h); // blended
 
   const upscale = newSurface(w * upSize, h * upSize);
 
@@ -174,12 +174,6 @@ export const train = async (net:NN, trainingSet, options = {}, imgA, imgB, w, h)
         const b = abs(Mat.at(net.as[net.count], 0, 0));
         outputB.vset(x, y, [ b, b, b ]);
 
-        // Run for custom blend
-        Mat.put(net.as[0], 0, 2, blend);
-        NN.forward(net);
-        const c = abs(Mat.at(net.as[net.count], 0, 0));
-        outputC.vset(x, y, [ c, c, c ]);
-
         //diff.pset(x, y, weightColor(expect - b, 1, true));
       }
     }
@@ -187,13 +181,13 @@ export const train = async (net:NN, trainingSet, options = {}, imgA, imgB, w, h)
     // Commit pixels to surface
     outputA.update();
     outputB.update();
-    outputC.update();
     //diff.update();
 
-    // Only render upscale of factor n every nth epoch
-    //if ((epoch % upSize) === 0) {
-      //netToImg(net, upscale, w, h, upSize);
-    //}
+    // Only render upscale of factor n every nth frame
+    if ((frame % upSize) === 0) {
+      Mat.put(net.as[0], 0, 2, blend);
+      netToImg(net, upscale, w, h, upSize);
+    }
 
     // Draw new frame
     Screen.all((ctx, { w, h }) => {
@@ -240,7 +234,7 @@ export const train = async (net:NN, trainingSet, options = {}, imgA, imgB, w, h)
       // Blended image
       Screen.zone(3/4 * w*blend, h*3/4, w/4, h/4, (ctx, size) => {
         Screen.pad(size, 0.9, (ctx, size) => {
-          Screen.image(outputC.canvas, size);
+          Screen.image(upscale.canvas, size);
           Screen.text(`${(blend * 100).toFixed(0)}%`, 10, 25, 'white', 22);
         });
       });
@@ -266,6 +260,8 @@ export const train = async (net:NN, trainingSet, options = {}, imgA, imgB, w, h)
       await new Promise(requestAnimationFrame);
       await trainFrame();
     }
+
+    frame += 1;
 
     // Gym might be interested in the final gradient network
     return grad;
@@ -349,6 +345,7 @@ const netToImg = (net:Network, surface:Surface, w:number, h:number, z = 1) => {
       surface.vset(x, y, [ b, b, b ]);
     }
   }
+
 
   surface.update();
   return surface;
@@ -511,14 +508,15 @@ export const main = async () => {
 
   // Train Network
 
-  const net = NN.alloc([ 3, 7, 7, 7, 1 ], true);
+  const net = NN.alloc([ 3, 7, 6, 5, 1 ], true);
 
   await train(net, trainData, {
     maxEpochs: 20000,
     maxRank: 5,
-    batchesPF: 31,
+    batchesPF: 60,
     batchSize: 100,
-    rate: 2,
+    rate: 1,
+    upSize: 6,
   }, imgA, imgB, 27, 27);
 
 }
