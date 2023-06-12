@@ -9,7 +9,7 @@
 // This is just to scratch my own itch, do not use lol.
 //
 
-import { weightColor, logHelper, limit, costRank, rgb, abs, max } from './utils';
+import { lerp, min, unbend, weightColor, logHelper, limit, costRank, rgb, abs, max } from './utils';
 
 import * as Screen from './canvas';
 import * as Mat from './matrix';
@@ -89,13 +89,13 @@ export const train = async (net:NN, trainingSet, options = {}, imgA, imgB, w, h)
     });
   }
 
+
   // Training loop (one frame)
 
   const trainFrame = async () => {
 
-    // Scale learning rate as we progress
-    const a = limit(1, 10, 1/(c + 1 - aggression * (epoch/maxEpochs)));
-    const r = rate/2 + rate/2 * a;
+    // Scale learning rate down after cost hits 0.01 and approaches 0
+    const r = lerp(1, rate, min(1, c/0.01));
 
     // Apply backpropagated gradient in batches
     for (let i = 0; i < batchesPF; i++) {
@@ -515,7 +515,7 @@ export const main = async () => {
     maxRank: 5,
     batchesPF: 60,
     batchSize: 100,
-    rate: 1,
+    rate: 5,
     upSize: 6,
   }, imgA, imgB, 27, 27);
 
