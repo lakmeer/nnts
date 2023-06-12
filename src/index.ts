@@ -30,25 +30,18 @@ const log = logHelper("IMG");
 // Training Loop
 //
 
-const PREVIEW_MODE: "OUTPUT" | "DIFF" | "DEBUG" = "OUTPUT";
+const AUTOBLEND = false;
 
-export const train = async (net:NN, trainingSet, options = {}, img, w, h) => {
+export const train = async (net:NN, trainingSet, options = {}, imgA, imgB, w, h) => {
 
   const maxEpochs  = options.maxEpochs  ?? 10000;
   const maxRank    = options.maxRank    ?? 4;
   const rate       = options.rate       ?? 1;
-  const batchesPF  = options.batchesPF  ?? 1;
+  const batchesPF  = options.batchesPF  ?? 100;
+  const batchSize  = options.batchSize  ?? 100;
   const aggression = options.aggression ?? 0;
   const jitter     = options.jitter     ?? 0;
   const upSize     = options.upSize     ?? 1;
-
-  const maxWindow = 100;
-
-  Screen.setAspect(1);
-
-
-  const cancel = () => state = "CANCELLED";
-  document.addEventListener('keydown', cancel);
 
 
   // Prepare Gradient Network
@@ -66,29 +59,35 @@ export const train = async (net:NN, trainingSet, options = {}, img, w, h) => {
   let epoch = 0;
   let state: TrainState = "TRAINING";
 
-  const input   = newSurface(w, h, img);
-  const diff    = newSurface(w, h);
-  const output  = newSurface(w, h, img);
+  const inputA  = newSurface(w, h, imgA);
+  const inputB  = newSurface(w, h, imgB);
+  //const diff    = newSurface(w, h);
+  const outputA = newSurface(w, h);
+  const outputB = newSurface(w, h);
+  const outputC = newSurface(w, h); // blended
+
   const upscale = newSurface(w * upSize, h * upSize);
 
 
   // Batching
-  //
-  // Full training set has been shuffled
-  // Starting at index 0, train on batchSize worth of rows
-  // Then increment batchStart by batchSize
-  // Repeat until batchStart + batchSize is greater than the number of rows
-  //  or until max batches per frame
-  // Next frame will resume from current batchStart
-  // If batchEnd is greater than the number of rows, reset to zeroth batch
-  // Epoch now will only increment this frame if we ran out of batches
-
-  const batchSize = 10;
 
   let batchStart = 0;
-  let batchEnd   = batchSize;
+  let blend      = 0.5;
+  let avgCost    = 0;
 
-  let avgCost = 0;
+  log.info(`${trainingSet.rows} training samples in ${Math.ceil(trainingSet.rows/batchSize)} batches of ${batchSize}`);
+
+
+  // Interaction
+
+  const cancel = () => state = "CANCELLED";
+  document.addEventListener('keydown', cancel);
+
+  if (!AUTOBLEND) {
+    document.addEventListener('mousemove', ({ clientX }) => {
+      blend = clientX / window.innerWidth;
+    });
+  }
 
   // Training loop (one frame)
 
@@ -97,8 +96,6 @@ export const train = async (net:NN, trainingSet, options = {}, img, w, h) => {
     // Scale learning rate as we progress
     const a = limit(1, 10, 1/(c + 1 - aggression * (epoch/maxEpochs)));
     const r = rate/2 + rate/2 * a;
-
-    Mat.shuffleRows(trainingSet);
 
     // Apply backpropagated gradient in batches
     for (let i = 0; i < batchesPF; i++) {
@@ -109,8 +106,8 @@ export const train = async (net:NN, trainingSet, options = {}, img, w, h) => {
         size = trainingSet.rows - batchStart;
       }
 
-      const batch_ti = Mat.sub(trainingSet, batchStart, 0, size, 2);
-      const batch_to = Mat.sub(trainingSet, batchStart, 2, size, 1);
+      const batch_ti = Mat.sub(trainingSet, batchStart, 0, size, 3);
+      const batch_to = Mat.sub(trainingSet, batchStart, 3, size, 1);
 
       NN.backprop(net, grad, 0, batch_ti, batch_to);
       NN.learn(net, grad, r);
@@ -119,11 +116,18 @@ export const train = async (net:NN, trainingSet, options = {}, img, w, h) => {
       batchStart += size;
 
       if (batchStart >= trainingSet.rows) {
+
+        // Reset for new epoch
         epoch += 1;
         batchStart = 0;
+
+        // Commit avg cost to series data
         c = avgCost / batchesPF;
         costHist.push(c);
         avgCost = 0;
+
+        // New shuffle orger for next epoch
+        Mat.shuffleRows(trainingSet);
       }
     }
 
@@ -136,39 +140,60 @@ export const train = async (net:NN, trainingSet, options = {}, img, w, h) => {
     }
 
     if (rank  >= maxRank) {
-      log.err("Finished: Cost rank goal reached -", rank, costRank(c, true));
+      log.ok("Finished: Cost rank goal reached -", rank, costRank(c, true));
       state = "FINISHED";
     }
+
+
+    // Autoblend
+
+    if (AUTOBLEND) {
+      blend = Math.cos(performance.now() / 2000) / 2 + 0.5;
+    }
+
 
     // Run inference and paint to canvas(es)
 
     for (let x = 0; x < w; x++) {
       for (let y = 0; y < h; y++) {
+        const i = (x + y * h);
+
+        // Load pixels
         Mat.put(net.as[0], 0, 0, x/w);
         Mat.put(net.as[0], 0, 1, y/h);
 
+        // Run for blend = 0
+        Mat.put(net.as[0], 0, 2, 0);
         NN.forward(net);
+        const a = abs(Mat.at(net.as[net.count], 0, 0));
+        outputA.vset(x, y, [ a, a, a ]);
 
-        const i = (x + y * h);
+        // Run for blend = 1
+        Mat.put(net.as[0], 0, 2, 1);
+        NN.forward(net);
         const b = abs(Mat.at(net.as[net.count], 0, 0));
-        const expect = input.pget(x, y)[0]/255;
+        outputB.vset(x, y, [ b, b, b ]);
 
-        output.vset(x, y, [ b, b, b ]);
-        diff.pset(x, y, weightColor(expect - b, 1, true));
+        // Run for custom blend
+        Mat.put(net.as[0], 0, 2, blend);
+        NN.forward(net);
+        const c = abs(Mat.at(net.as[net.count], 0, 0));
+        outputC.vset(x, y, [ c, c, c ]);
+
+        //diff.pset(x, y, weightColor(expect - b, 1, true));
       }
     }
 
     // Commit pixels to surface
-    output.update();
-    diff.update();
-
-    // Render net
-    netToImg(net, output, w, h);
+    outputA.update();
+    outputB.update();
+    outputC.update();
+    //diff.update();
 
     // Only render upscale of factor n every nth epoch
-    if ((epoch % upSize) === 0) {
-      netToImg(net, upscale, w, h, upSize);
-    }
+    //if ((epoch % upSize) === 0) {
+      //netToImg(net, upscale, w, h, upSize);
+    //}
 
     // Draw new frame
     Screen.all((ctx, { w, h }) => {
@@ -177,43 +202,52 @@ export const train = async (net:NN, trainingSet, options = {}, img, w, h) => {
       Screen.grid('grey', 0, 0, w, h, 8);
 
       // Network diagram
-      Screen.zone(0, h/4, w*3/4, h*3/4, (ctx, size) => {
+      Screen.zone(w/4, h/4, w*1/2, h*1/2, (ctx, size) => {
         Screen.pad(size, 0.9, (ctx, size) => {
           Screen.drawNetwork(grad, size, 1.2, 10, true);
           Screen.drawNetwork(net,  size, 1,   1);
         });
       });
 
-      // Input image
-      Screen.zone(w*3/4, h*0/4, w/4, h/4, (ctx, size) => {
+      // Input image A
+      Screen.zone(0, h*1/4, w/4, h/4, (ctx, size) => {
         Screen.pad(size, 0.9, (ctx, size) => {
-          Screen.image(input.canvas, size);
+          Screen.image(inputA.canvas, size);
         });
       });
 
-      // Diff image
+      // Output image A
+      Screen.zone(0, h*2/4, w/4, h/4, (ctx, size) => {
+        Screen.pad(size, 0.9, (ctx, size) => {
+          Screen.image(outputA.canvas, size);
+        });
+      });
+
+      // Input image B
       Screen.zone(w*3/4, h*1/4, w/4, h/4, (ctx, size) => {
         Screen.pad(size, 0.9, (ctx, size) => {
-          Screen.image(diff.canvas, size);
+          Screen.image(inputB.canvas, size);
         });
       });
 
-      // Output image
-      Screen.zone(w*3/4, h*2/4, w/4, h/4, (ctx, size) => {
+      // Output image B
+      Screen.zone(w*3/4, h*1/2, w/4, h/4, (ctx, size) => {
         Screen.pad(size, 0.9, (ctx, size) => {
-          Screen.image(output.canvas, size);
+          Screen.image(outputB.canvas, size);
         });
       });
 
-      // Upscale preview
-      Screen.zone(w*3/4, h*3/4, w/4, h/4, (ctx, size) => {
+      // Blended image
+      Screen.zone(3/4 * w*blend, h*3/4, w/4, h/4, (ctx, size) => {
         Screen.pad(size, 0.9, (ctx, size) => {
-          Screen.image(upscale.canvas, size);
+          Screen.image(outputC.canvas, size);
+          Screen.text(`${(blend * 100).toFixed(0)}%`, 10, 25, 'white', 22);
         });
       });
+
 
       // Cost history plot
-      Screen.zone(0, 0, w*3/4, h/4, (ctx, size) => {
+      Screen.zone(0, 0, w, h/4, (ctx, size) => {
         Screen.plotSeries(costHist, size, options.color ?? '#ff2266', true);
 
         const tCost = c.toFixed(maxRank - 1);
@@ -256,7 +290,7 @@ export const train = async (net:NN, trainingSet, options = {}, img, w, h) => {
 
 
 //
-// Helpers
+// Image Training Helpers
 //
 
 const loadImage = (src:string) =>
@@ -293,7 +327,6 @@ const imageToMatrix = (img:HTMLImageElement) => {
       Mat.put(mat, y, x, v);
     }
   }
-
 
   return mat;
 }
@@ -335,6 +368,33 @@ const imageMatToTrainingData = (a:Mat) => {
 
   return mat;
 }
+
+const blendedImagesTrainingData = (a:Mat, b:Mat) => {
+
+  if (a.rows !== b.rows || a.cols !== b.cols) throw new Error("Blending images must have same dimensions");
+
+  // [ #pixels ] x [ x, y, blend, output ]
+  const mat = Mat.alloc(a.rows * a.cols * 2, 4);
+
+  for (let z = 0; z < 2; z += 1) {
+    for (let x = 0; x < a.cols; x += 1) {
+      for (let y = 0; y < a.rows; y += 1) {
+        const row = x + y * a.rows + z * a.rows * a.cols;
+        Mat.put(mat, row, 0, x/a.cols);
+        Mat.put(mat, row, 1, y/a.rows);
+        Mat.put(mat, row, 2, z);
+        Mat.put(mat, row, 3, Mat.at(z ? b : a, y, x));
+      }
+    }
+  }
+
+  return mat;
+}
+
+
+//
+// Debug features
+//
 
 const all = document.createElement('div');
 all.style.position = 'absolute';
@@ -433,7 +493,9 @@ export const main = async () => {
 
   console.clear();
 
-  log.blue("Running MNIST Example");
+  Screen.setAspect(1);
+
+  log.blue("Running MNIST Blending Example");
 
   const imgA = await loadImage('/6.png');
   const a = imageToMatrix(imgA);
@@ -442,23 +504,22 @@ export const main = async () => {
   const b = await imageToMatrix(imgB);
 
 
-  // Training data (with stochastic shuffling)
+  // Training data
 
-  const trainData = imageMatToTrainingData(a);
+  const trainData = blendedImagesTrainingData(a, b);
 
 
   // Train Network
 
-  const net = NN.alloc([ 2, 7, 7, 7, 1 ], true);
+  const net = NN.alloc([ 3, 7, 7, 7, 1 ], true);
 
-  await train(net, trainData, { 
+  await train(net, trainData, {
     maxEpochs: 20000,
-    maxRank:  4,
+    maxRank: 5,
+    batchesPF: 31,
     batchSize: 100,
-    batchesPF: 100,
-    rate: 1,
-    upSize: 5,
-  }, imgA, 27, 27);
+    rate: 2,
+  }, imgA, imgB, 27, 27);
 
 }
 
