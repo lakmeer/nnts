@@ -48,6 +48,10 @@ export const limit = (a:number, b:number, n:number) => min(b, max(a, n));
 export const lerp = (a:number, b:number, t:number):number => a + (b - a) * t;
 export const sigmoid = (x:float):float => 1 / (1 + exp(-x));
 export const unbend = (n) => 1 - (1 - n) * (1 - n);
+export const smoothstep = (x:float, a:float, b:float):float => {
+  const t = limit(0, 1, (x - a) / (b - a));
+  return t * t * (3 - 2 * t);
+}
 
 
 // Text-mode Tables
@@ -73,6 +77,13 @@ export const NEUTRAL = [ 232,  234,  235 ];
 export const BLUE    = [ 8,    119,  189 ];
 export const DARK    = [ 33,   33,   33  ];
 export const BLACK   = [ 0,    0,    0   ];
+
+export const RED = '#ff2266';
+export const ORANGE_ = '#ff6622';
+export const YELLOW = '#ffff22';
+export const GREEN = '#22ff66';
+export const BLUE_ = '#2266ff';
+export const PURPLE = '#6622ff';
 
 export const colorLerp = (a:number[], b:number[], t:number):string =>
   [ lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t) ];
@@ -101,6 +112,16 @@ export const assert = (cond:boolean, msg:string) => {
 
 export const costRank = (n:float, symbol = false) => {
   const rank = -floor(log10(n));
-  return symbol ? [ "🔴", "🟠", "🟡", "🟢", "🔵", "🟣" ][limit(0, 4, rank - 1)] : rank;
+  return symbol ? [ "🔴", "🟠", "🟡", "🟢", "🔵", "🟣" ][limit(0, 4, rank - 1)] : rank - 1;
 }
+
+export const rankColor = (n:float) =>
+  [
+    RED,
+    ORANGE_,
+    YELLOW,
+    GREEN,
+    BLUE_,
+    PURPLE
+  ][costRank(n)];
 

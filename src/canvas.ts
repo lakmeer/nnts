@@ -1,4 +1,7 @@
 
+import { rankColor } from "./utils.ts";
+
+
 //
 // Index file is just for setting up the canvas and providing sensible renderign APIs.
 //
@@ -184,11 +187,19 @@ export const drawNetwork = (net:Net, { w, h }, radiusScale = 1, weightScale = 1,
 
 export const plotSeries = (data, { w, h }, color, fill = false) => {
   const xStep = w/data.length;
-  const maxY =  Math.max(...data);
+  const maxY = Math.max(...data);
 
-  ctx.setLineDash([15, 15]);
-  line('white', 0, h - 1/maxY * h, w, h - 1/maxY * h, 1/2);
-  ctx.setLineDash([]);
+  for (let r = 0; r < 6; r++) {
+    const t = Math.pow(10, -r);
+    const lineY = h - t/maxY * h;
+    ctx.beginPath();
+    ctx.setLineDash([15, 15]);
+    ctx.strokeStyle = rankColor(t / 10); 
+    ctx.moveTo(0, lineY);
+    ctx.lineTo(w, lineY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 
   ctx.beginPath();
   ctx.moveTo(0, h);
@@ -206,14 +217,14 @@ export const plotSeries = (data, { w, h }, color, fill = false) => {
 
   if (fill) {
     ctx.globalAlpha = 0.1;
-    ctx.fillStyle = color;
+    ctx.fillStyle = rankColor(data[data.length-1]);
     ctx.lineTo(w, h);
     ctx.lineTo(0, h);
     ctx.fill();
   }
 
   ctx.globalAlpha = 1.0;
-  ctx.strokeStyle = color;
+  ctx.strokeStyle = rankColor(data[data.length-1]);
   ctx.lineWidth = 2;
   ctx.stroke();
 
@@ -226,7 +237,6 @@ export const fillSeries = (data, { w, h }, color) => {
 
   ctx.beginPath();
 
-
   for (let i = 0; i < data.length - 1; i++) {
     const x1 = i * xStep;
     const y1 = h - h * data[i]/maxY;
@@ -234,6 +244,7 @@ export const fillSeries = (data, { w, h }, color) => {
     //const y2 = h - h * data[i+1]/maxY;
     ctx.lineTo(x1, y1);
   }
+
 }
 
 

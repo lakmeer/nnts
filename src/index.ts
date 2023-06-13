@@ -9,7 +9,7 @@
 // This is just to scratch my own itch, do not use lol.
 //
 
-import { lerp, min, unbend, weightColor, logHelper, limit, costRank, rgb, abs, max } from './utils';
+import { smoothstep, lerp, min, unbend, weightColor, logHelper, limit, costRank, rgb, abs, max } from './utils';
 
 import * as Screen from './canvas';
 import * as Mat from './matrix';
@@ -42,6 +42,7 @@ export const train = async (net:NN, trainingSet, options = {}, imgA, imgB, w, h)
   const aggression = options.aggression ?? 0;
   const jitter     = options.jitter     ?? 0;
   const upSize     = options.upSize     ?? 1;
+  const minRate    = options.minRate    ?? 1;
 
 
   // Prepare Gradient Network
@@ -58,6 +59,7 @@ export const train = async (net:NN, trainingSet, options = {}, imgA, imgB, w, h)
   let rank = 0;
   let epoch = 0;
   let frame = 0;
+  let smoothCost = [];
 
   let state: TrainState = "TRAINING";
 
@@ -66,6 +68,7 @@ export const train = async (net:NN, trainingSet, options = {}, imgA, imgB, w, h)
   const outputA = newSurface(w, h);
   const outputB = newSurface(w, h);
 
+  const tween   = newSurface(w, h);
   const upscale = newSurface(w * upSize, h * upSize);
 
 
@@ -94,8 +97,8 @@ export const train = async (net:NN, trainingSet, options = {}, imgA, imgB, w, h)
 
   const trainFrame = async () => {
 
-    // Scale learning rate down after cost hits 0.01 and approaches 0
-    const r = lerp(1, rate, min(1, c/0.01));
+    // Scale learning rate down as cost approaches 0
+    const r = lerp(rate, minRate, smoothstep(c, 0.01, 0));
 
     // Apply backpropagated gradient in batches
     for (let i = 0; i < batchesPF; i++) {
@@ -122,13 +125,23 @@ export const train = async (net:NN, trainingSet, options = {}, imgA, imgB, w, h)
         batchStart = 0;
 
         // Commit avg cost to series data
-        c = avgCost / batchesPF;
-        costHist.push(c);
+        smoothCost.push(avgCost / batchesPF);
         avgCost = 0;
 
         // New shuffle orger for next epoch
         Mat.shuffleRows(trainingSet);
       }
+    }
+
+    // Move history window
+    if (smoothCost.length > 5) {
+      smoothCost.shift();
+      c = smoothCost.reduce((a, b) => a + b, 0) / smoothCost.length;
+      costHist.push(c);
+    }
+
+    while (costHist.length > 500) {
+      costHist.shift();
     }
 
     // Review frame
@@ -181,12 +194,11 @@ export const train = async (net:NN, trainingSet, options = {}, imgA, imgB, w, h)
     // Commit pixels to surface
     outputA.update();
     outputB.update();
-    //diff.update();
 
     // Only render upscale of factor n every nth frame
     if ((frame % upSize) === 0) {
       Mat.put(net.as[0], 0, 2, blend);
-      netToImg(net, upscale, w, h, upSize);
+      netToImg(net, upscale);
     }
 
     // Draw new frame
@@ -196,7 +208,7 @@ export const train = async (net:NN, trainingSet, options = {}, imgA, imgB, w, h)
       Screen.grid('grey', 0, 0, w, h, 8);
 
       // Network diagram
-      Screen.zone(w/4, h/4, w*1/2, h*1/2, (ctx, size) => {
+      Screen.zone(w/4, h/4, w/2, h*5/8, (ctx, size) => {
         Screen.pad(size, 0.9, (ctx, size) => {
           Screen.drawNetwork(grad, size, 1.2, 10, true);
           Screen.drawNetwork(net,  size, 1,   1);
@@ -204,41 +216,45 @@ export const train = async (net:NN, trainingSet, options = {}, imgA, imgB, w, h)
       });
 
       // Input image A
-      Screen.zone(0, h*1/4, w/4, h/4, (ctx, size) => {
+      Screen.zone(0, h*2/8, w/4, h/4, (ctx, size) => {
         Screen.pad(size, 0.9, (ctx, size) => {
           Screen.image(inputA.canvas, size);
         });
       });
 
-      // Output image A
-      Screen.zone(0, h*2/4, w/4, h/4, (ctx, size) => {
-        Screen.pad(size, 0.9, (ctx, size) => {
-          Screen.image(outputA.canvas, size);
-        });
-      });
-
       // Input image B
-      Screen.zone(w*3/4, h*1/4, w/4, h/4, (ctx, size) => {
+      Screen.zone(w*3/4, h*2/8, w/4, h/4, (ctx, size) => {
         Screen.pad(size, 0.9, (ctx, size) => {
           Screen.image(inputB.canvas, size);
         });
       });
 
+      // Output image A
+      Screen.zone(0, h*4/8, w/4, h/4, (ctx, size) => {
+        Screen.pad(size, 0.9, (ctx, size) => {
+          Screen.image(outputA.canvas, size);
+        });
+      });
+
       // Output image B
-      Screen.zone(w*3/4, h*1/2, w/4, h/4, (ctx, size) => {
+      Screen.zone(w*3/4, h*4/8, w/4, h/4, (ctx, size) => {
         Screen.pad(size, 0.9, (ctx, size) => {
           Screen.image(outputB.canvas, size);
         });
       });
 
-      // Blended image
-      Screen.zone(3/4 * w*blend, h*3/4, w/4, h/4, (ctx, size) => {
-        Screen.pad(size, 0.9, (ctx, size) => {
-          Screen.image(upscale.canvas, size);
-          Screen.text(`${(blend * 100).toFixed(0)}%`, 10, 25, 'white', 22);
-        });
-      });
 
+      // Blended images
+      for (let i = 0; i < 8; i++) {
+        Mat.put(net.as[0], 0, 2, i/7);
+        netToImg(net, tween);
+
+        Screen.zone(i/8 * w, h*7/8, w/8, h/8, (ctx, size) => {
+          Screen.pad(size, 0.9, (ctx, size) => {
+            Screen.image(tween.canvas, size);
+          });
+        });
+      }
 
       // Cost history plot
       Screen.zone(0, 0, w, h/4, (ctx, size) => {
@@ -327,9 +343,9 @@ const imageToMatrix = (img:HTMLImageElement) => {
   return mat;
 }
 
-const netToImg = (net:Network, surface:Surface, w:number, h:number, z = 1) => {
-  w = w * z;
-  h = h * z;
+const netToImg = (net:Network, surface:Surface) => {
+  let w = surface.width;
+  let h = surface.height;
 
   for (let x = 0; x < w; x += 1) {
     for (let y = 0; y < h; y += 1) {
@@ -345,7 +361,6 @@ const netToImg = (net:Network, surface:Surface, w:number, h:number, z = 1) => {
       surface.vset(x, y, [ b, b, b ]);
     }
   }
-
 
   surface.update();
   return surface;
@@ -436,6 +451,8 @@ const onTop = (el, scale = 1) => {
 type Surface = {
   canvas: HTMLCanvasElement,
   ctx: CanvasRenderingContext2D,
+  width: int,
+  height: int,
   data: Uint8ClampedArray,
   update: () => void,
   pset: (x:number, y:number, c:[number, number, number, number?]) => void,
@@ -467,6 +484,8 @@ const newSurface = (w:number, h:number, img?):Surface => {
     canvas,
     pset,
     vset,
+    width: w,
+    height: h,
     data: imageData.data,
     update: () => ctx.putImageData(imageData, 0, 0),
     pget: (x, y) => {
@@ -494,10 +513,10 @@ export const main = async () => {
 
   log.blue("Running MNIST Blending Example");
 
-  const imgA = await loadImage('/6.png');
+  const imgA = await loadImage('/5.png');
   const a = imageToMatrix(imgA);
 
-  const imgB = await loadImage('/9.png');
+  const imgB = await loadImage('/7.png');
   const b = await imageToMatrix(imgB);
 
 
@@ -508,14 +527,15 @@ export const main = async () => {
 
   // Train Network
 
-  const net = NN.alloc([ 3, 7, 6, 5, 1 ], true);
+  const net = NN.alloc([ 3, 6, 9, 1 ], true);
 
   await train(net, trainData, {
     maxEpochs: 20000,
     maxRank: 5,
-    batchesPF: 60,
+    batchesPF: 80,
     batchSize: 100,
-    rate: 5,
+    rate: 4,
+    minRate: 0.2,
     upSize: 6,
   }, imgA, imgB, 27, 27);
 
